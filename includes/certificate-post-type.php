@@ -809,18 +809,18 @@ function add_custom_fields() {
 add_action('acf/init', 'add_custom_fields');
 
 // Add Admin Page for Data Management
-function custom_post_admin_menu() {
-    add_menu_page(
-        'Custom Post Management',
-        'Post Management',
-        'manage_options',
-        'custom-post-management',
-        'render_custom_post_admin_page',
-        'dashicons-admin-generic',
-        20
-    );
-}
-add_action('admin_menu', 'custom_post_admin_menu');
+// function custom_post_admin_menu() {
+//     add_menu_page(
+//         'Custom Post Management',
+//         'Post Management',
+//         'manage_options',
+//         'custom-post-management',
+//         'render_custom_post_admin_page',
+//         'dashicons-admin-generic',
+//         20
+//     );
+// }
+// add_action('admin_menu', 'custom_post_admin_menu');
 
 // Render the Admin Page
 function render_custom_post_admin_page() {

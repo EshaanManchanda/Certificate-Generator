@@ -3,161 +3,6 @@
 // Include FPDF library (add this library in your plugin directory)
 require_once __DIR__ . '/fpdf/fpdf.php';
 
-
-// Shortcode to generate and download certificate
-add_shortcode('generate_certificate', 'generate_certificate_shortcode');
-function generate_certificate_shortcode($atts)
-{
-    $atts = shortcode_atts([
-        'post_id' => get_the_ID(),
-    ], $atts);
-
-    $post_id = $atts['post_id'];
-
-    // Generate the certificate
-    $certificate_url = generate_certificate_pdf($post_id);
-
-    if ($certificate_url) {
-        return '<a href="' . esc_url($certificate_url) . '" target="_blank">Download Certificate</a>';
-    } else {
-        return '<p>Failed to generate the certificate. Please check the data.</p>';
-    }
-}
-
-// Shortcode to generate and download certificate
-add_shortcode('generate_teacher_certificate', 'generate_teacher_certificate_shortcode');
-function generate_teacher_certificate_shortcode($atts)
-{
-    $atts = shortcode_atts([
-        'post_id' => get_the_ID(),
-    ], $atts);
-
-    $post_id = $atts['post_id'];
-
-    // Generate the certificate
-    $certificate_url = generate_teacher_certificate_pdf($post_id);
-
-    if ($certificate_url) {
-        return '<a href="' . esc_url($certificate_url) . '" target="_blank">Download Certificate</a>';
-    } else {
-        return '<p>Failed to generate the certificate. Please check the data.</p>';
-    }
-}
-
-function generate_teacher_certificate_pdf($post_id) {
-    // Get the certificate type from the current post
-    $certificate_type = get_post_meta($post_id, 'certificate_type', true);
-
-    if (!$certificate_type) {
-        return '<p>Certificate type is missing for this post.</p>';
-    }
-
-    // Fetch certificate template details
-    $certificate_query = new WP_Query([
-        'post_type' => 'certificates',
-        'meta_query' => [
-            [
-                'key' => 'certificate_type',
-                'value' => $certificate_type,
-                'compare' => '='
-            ]
-        ]
-    ]);
-
-    if (!$certificate_query->have_posts()) {
-        return false; // No matching certificate template found
-    }
-
-    $certificate_template = $certificate_query->posts[0];
-    $template_url = get_post_meta($certificate_template->ID, 'template_url', true);
-
-    // Fetch dynamic fields
-    $template_orientation = get_post_meta($certificate_template->ID, 'template_orientation', true) ?: 'portrait';
-    $font_size = get_post_meta($certificate_template->ID, 'font_size', true) ?: 12;
-    $font_color = get_post_meta($certificate_template->ID, 'font_color', true) ?: '#000000';
-    $font_style = get_post_meta($certificate_template->ID, 'font_style', true) ?: 'Arial';
-
-    
-    // Fetch field positions dynamically
-    $fields = ['teacher_name', 'school_name', 'issue_date'];
-    $field_positions = [];
-    
-    foreach ($fields as $index => $field) {
-        $field_key = $index + 1;
-        $field_positions[$field] = [
-            'x' => get_post_meta($certificate_template->ID, "field_{$field_key}_position_x", true),
-            'y' => get_post_meta($certificate_template->ID, "field_{$field_key}_position_y", true),
-            'visible' => get_post_meta($certificate_template->ID, "field_{$field_key}_visible", true),
-        ];
-    }
-    
-    // Fetch post data (teacher)
-    $issue_date_raw = get_post_meta($post_id, 'issue_date', true);
-    $post_data = [
-        'teacher_name' => get_post_meta($post_id, 'teacher_name', true),
-        'school_name' => get_post_meta($post_id, 'school_name', true),
-        'issue_date' => date('d-m-Y', strtotime($issue_date_raw)),
-    ];
-
-    // Generate PDF
-    $pdf = new FPDF($template_orientation, 'mm', 'A4');
-    $pdf->AddPage();
-    
-    switch ($font_style) {
-        case 'Times New Roman':
-            $pdf->AddFont('Times New Roman', 'B', 'Times New Roman Bold.php');
-            $pdf->AddFont('Times New Roman', '', 'Times New Roman.php');
-            break;
-        case 'Helvetica':
-            $pdf->AddFont('Helvetica', 'B', 'helveticab.php');
-            $pdf->AddFont('Helvetica', '', 'helvetica.php');
-            break;
-        default:
-            # code...
-            break;
-    }
-    // Add template background
-    if($template_orientation== 'landscape')
-    {
-        $pdf->Image($template_url, 0, 0, 297, 210); // A4 size
-    }
-    else{
-
-        $pdf->Image($template_url, 0, 0, 210, 297); // A4 size
-    }
-
-    // Set font color
-    $font_color_rgb = sscanf($font_color, "#%02x%02x%02x");
-    $pdf->SetTextColor($font_color_rgb[0], $font_color_rgb[1], $font_color_rgb[2]);
-
-    // Add dynamic text fields
-    foreach ($field_positions as $field => $position) {
-        if ($position['visible']) {
-            if (!empty($post_data[$field])) {
-                if (is_numeric($position['x']) && is_numeric($position['y'])) {
-                    $pdf->SetXY($position['x'], $position['y']);
-                    $pdf->SetFont($font_style, 'B', $font_size);
-                    $pdf->Cell(0, 10, $post_data[$field], 0, 1, 'C');
-                } else {
-                    error_log("Invalid position for $field: X={$position['x']}, Y={$position['y']}");
-                }
-            } else {
-                error_log("Data missing for $field");
-            }
-        } else {
-            error_log("Field $field is not visible");
-        }
-    }
-
-    // Output PDF
-    $upload_dir = wp_upload_dir();
-    $pdf_path = $upload_dir['path'] . "/certificate_$post_id.pdf";
-    $pdf->Output('F', $pdf_path);
-
-    return $upload_dir['url'] . "/certificate_$post_id.pdf";
-}
-
-
 // Shortcode to search for teacher certificates
 add_shortcode('teacher_search', 'teacher_search_shortcode');
 function teacher_search_shortcode()
@@ -198,7 +43,8 @@ function teacher_search_shortcode()
             while ($query->have_posts()) {
                 $query->the_post();
                 $post_id = get_the_ID();
-                $file_url = generate_teacher_certificate_pdf($post_id);
+                $fields = ['teacher_name', 'school_name', 'issue_date'];
+                $file_url = generate_certificate_pdf($post_id,$fields);
                 $output .= '<li style="padding: 15px 20px; border-bottom: 1px solid #ddd; font-size: 14px; display: flex; flex-direction: column; gap: 8px;">';
                 $output .= '<strong>' . get_the_title() . '</strong><br>';
                 $output .= '<span>School: ' . get_post_meta(get_the_ID(), 'school_name', true) . '</span>';
@@ -226,99 +72,6 @@ function teacher_search_shortcode()
 
     return $output;
 }
-
-
-function generate_school_certificate_pdf($post_id) {
-    // Get the certificate type from the current post
-    $certificate_type = get_post_meta($post_id, 'certificate_type', true);
-
-    if (!$certificate_type) {
-        return '<p>Certificate type is missing for this post.</p>';
-    }
-
-    // Fetch certificate template details
-    $certificate_query = new WP_Query([
-        'post_type' => 'certificates',
-        'meta_query' => [
-            [
-                'key' => 'certificate_type',
-                'value' => $certificate_type,
-                'compare' => '='
-            ]
-        ]
-    ]);
-
-    if (!$certificate_query->have_posts()) {
-        return false; // No matching certificate template found
-    }
-
-    $certificate_template = $certificate_query->posts[0];
-    $template_url = get_post_meta($certificate_template->ID, 'template_url', true);
-
-    // Fetch dynamic fields
-    $template_orientation = get_post_meta($certificate_template->ID, 'template_orientation', true) ?: 'portrait';
-    $font_size = get_post_meta($certificate_template->ID, 'font_size', true) ?: 12;
-    $font_color = get_post_meta($certificate_template->ID, 'font_color', true) ?: '#000000';
-    $font_style = get_post_meta($certificate_template->ID, 'font_style', true) ?: 'Arial';
-
-    // Fetch field positions dynamically
-    $fields = ['school_name', 'issue_date'];
-    $field_positions = [];
-
-    foreach ($fields as $index => $field) {
-        $field_key = $index + 1;
-        $field_positions[$field] = [
-            'x' => get_post_meta($certificate_template->ID, "field_{$field_key}_position_x", true),
-            'y' => get_post_meta($certificate_template->ID, "field_{$field_key}_position_y", true),
-            'visible' => get_post_meta($certificate_template->ID, "field_{$field_key}_visible", true),
-        ];
-    }
-
-    // Fetch post data (school)
-    $issue_date_raw = get_post_meta($post_id, 'issue_date', true);
-    $post_data = [
-        'school_name' => get_post_meta($post_id, 'school_name', true),
-        'issue_date' => date('d-m-Y', strtotime($issue_date_raw)),
-    ];
-
-    // Generate PDF
-    $pdf = new FPDF($template_orientation, 'mm', 'A4');
-    $pdf->AddPage();
-
-    // Add template background
-    $pdf->Image($template_url, 0, 0, 210, 297); // A4 size
-
-    // Set font color
-    $font_color_rgb = sscanf($font_color, "#%02x%02x%02x");
-    $pdf->SetTextColor($font_color_rgb[0], $font_color_rgb[1], $font_color_rgb[2]);
-
-    // Add dynamic text fields
-    foreach ($field_positions as $field => $position) {
-        if ($position['visible']) {
-            if (!empty($post_data[$field])) {
-                if (is_numeric($position['x']) && is_numeric($position['y'])) {
-                    $pdf->SetXY($position['x'], $position['y']);
-                    $pdf->SetFont($font_style, 'B', $font_size);
-                    $pdf->Cell(0, 10, $post_data[$field], 0, 1, 'C');
-                } else {
-                    error_log("Invalid position for $field: X={$position['x']}, Y={$position['y']}");
-                }
-            } else {
-                error_log("Data missing for $field");
-            }
-        } else {
-            error_log("Field $field is not visible");
-        }
-    }
-
-    // Output PDF
-    $upload_dir = wp_upload_dir();
-    $pdf_path = $upload_dir['path'] . "/certificate_$post_id.pdf";
-    $pdf->Output('F', $pdf_path);
-
-    return $upload_dir['url'] . "/certificate_$post_id.pdf";
-}
-
 
 // Shortcode to search for school certificates
 add_shortcode('school_search', 'school_search_shortcode');
@@ -359,7 +112,8 @@ function school_search_shortcode() {
             while ($query->have_posts()) {
                 $query->the_post();
                 $post_id = get_the_ID();
-                $file_url = generate_school_certificate_pdf($post_id);
+                $fields = ['school_name', 'issue_date'];
+                $file_url = generate_certificate_pdf($post_id,$fields);
                 $output .= '<li style="padding: 15px 20px; border-bottom: 1px solid #ddd; font-size: 14px; display: flex; flex-direction: column; gap: 8px;">';
                 $output .= '<strong style="font-size: 16px; color: #333;">' . get_the_title() . '</strong>';
                 $output .= '<span style="color: #555;">School: ' . get_post_meta(get_the_ID(), 'school_name', true) . '</span>';
@@ -391,6 +145,38 @@ function school_search_shortcode() {
 
 
 // Function to generate the certificate PDF with custom data
+function validate_template_url($template_url) {
+    // Step 1: Check if the URL is valid
+    if (!filter_var($template_url, FILTER_VALIDATE_URL)) {
+        error_log("Invalid URL format: $template_url");
+        return '<p>Template URL is invalid.</p>';
+    }
+
+    // Step 2: Check if the URL is accessible
+    $response = wp_remote_head($template_url);
+    if (is_wp_error($response)) {
+        error_log("Error accessing template URL: $template_url - " . $response->get_error_message());
+        return '<p>Template URL is inaccessible.</p>';
+    }
+
+    // Step 3: Check the HTTP status code
+    $status_code = wp_remote_retrieve_response_code($response);
+    if ($status_code !== 200) {
+        error_log("Template URL returned status code $status_code: $template_url");
+        return '<p>Template URL is inaccessible.</p>';
+    }
+
+    // Step 4: Validate the content type
+    $content_type = wp_remote_retrieve_header($response, 'content-type');
+    if (strpos($content_type, 'image/') !== 0) {
+        error_log("Invalid content type for template URL: $template_url - Content-Type: $content_type");
+        return '<p>Template URL is not a valid image file.</p>';
+    }
+
+    return true; // URL is valid and accessible
+}
+
+
 function generate_certificate_pdf_with_data($post_data) {
     // Fetch the certificate template based on certificate_type
     $certificate_query = new WP_Query([
@@ -406,7 +192,8 @@ function generate_certificate_pdf_with_data($post_data) {
     ]);
 
     if (!$certificate_query->have_posts()) {
-        return '<p>Certificate type is missing for this post.</p>';
+        echo '<div class="notice notice-error"><p>Unable to open the file. Please check the file and try again.</p></div>';
+        return false; // No matching certificate template found
     }
 
     $certificate_template = $certificate_query->posts[0];
@@ -417,6 +204,14 @@ function generate_certificate_pdf_with_data($post_data) {
     $font_size = get_post_meta($certificate_template->ID, 'font_size', true) ?: 12;
     $font_color = get_post_meta($certificate_template->ID, 'font_color', true) ?: '#000000';
     $font_style = get_post_meta($certificate_template->ID, 'font_style', true) ?: 'Arial';
+
+    $validation_result = validate_template_url($template_url);
+
+    if ($validation_result !== true) {
+        // Validation failed
+        echo $validation_result;
+        return;
+    }
 
     // Fetch field positions dynamically
     $fields = ['student_name', 'school_name', 'issue_date', 'certificate_type'];
@@ -508,13 +303,113 @@ function generate_certificate_pdf_with_data($post_data) {
 }
 
 
+// function generate_certificate_pdf($post_id) {
+//     // Get the certificate type from the current post
+//     $certificate_type = get_post_meta($post_id, 'certificate_type', true);
 
-function generate_certificate_pdf($post_id) {
+//     if (!$certificate_type) {
+//         return '<p>Certificate type is missing for this post.</p>';
+//     }
+
+//     // Fetch certificate template details
+//     $certificate_query = new WP_Query([
+//         'post_type' => 'certificates',
+//         'meta_query' => [
+//             [
+//                 'key' => 'certificate_type',
+//                 'value' => $certificate_type,
+//                 'compare' => '='
+//             ]
+//         ]
+//     ]);
+
+//     if (!$certificate_query->have_posts()) {
+//         return false; // No matching certificate template found
+//     }
+
+//     $certificate_template = $certificate_query->posts[0];
+//     $template_url = get_post_meta($certificate_template->ID, 'template_url', true);
+
+//     // Fetch dynamic fields
+//     $template_orientation = get_post_meta($certificate_template->ID, 'template_orientation', true) ?: 'portrait';
+//     $font_size = get_post_meta($certificate_template->ID, 'font_size', true) ?: 12;
+//     $font_color = get_post_meta($certificate_template->ID, 'font_color', true) ?: '#000000';
+//     $font_style = get_post_meta($certificate_template->ID, 'font_style', true) ?: 'Arial';
+
+//     // Fetch field positions dynamically
+//     $fields = ['student_name', 'school_name', 'issue_date'];
+//     $field_positions = [];
+
+//     foreach ($fields as $index => $field) {
+//         $field_key = $index + 1;
+//         $field_positions[$field] = [
+//             'x' => get_post_meta($certificate_template->ID, "field_{$field_key}_position_x", true),
+//             'y' => get_post_meta($certificate_template->ID, "field_{$field_key}_position_y", true),
+//             'visible' => get_post_meta($certificate_template->ID, "field_{$field_key}_visible", true),
+//         ];
+//     }
+
+//     // Fetch post data (student)
+//     $issue_date_raw = get_post_meta($post_id, 'issue_date', true);
+//     $post_data = [
+//         'student_name' => get_post_meta($post_id, 'student_name', true),
+//         'school_name' => get_post_meta($post_id, 'school_name', true),
+//         'issue_date' => date('d-m-Y', strtotime($issue_date_raw)),
+//     ];
+
+//     // Generate PDF
+//     $pdf = new FPDF($template_orientation, 'mm', 'A4');
+//     $pdf->AddPage();
+
+//     // Add template background
+//     if($template_orientation== 'landscape')
+//     {
+//         $pdf->Image($template_url, 0, 0, 297, 210); // A4 size
+//     }
+//     else{
+
+//         $pdf->Image($template_url, 0, 0, 210, 297); // A4 size
+//     }
+
+//     // Set font color
+//     $font_color_rgb = sscanf($font_color, "#%02x%02x%02x");
+//     $pdf->SetTextColor($font_color_rgb[0], $font_color_rgb[1], $font_color_rgb[2]);
+
+//     // Add dynamic text fields with debugging
+//     foreach ($field_positions as $field => $position) {
+//         if ($position['visible']) {
+//             if (!empty($post_data[$field])) {
+//                 // Check if the X and Y positions are valid
+//                 if (is_numeric($position['x']) && is_numeric($position['y'])) {
+//                     $pdf->SetXY($position['x'], $position['y']);
+//                     $pdf->SetFont($font_style, 'B', $font_size);
+//                     $pdf->Cell(0, 10, $post_data[$field], 0, 1, 'C');
+//                 } else {
+//                     error_log("Invalid position for $field: X={$position['x']}, Y={$position['y']}");
+//                 }
+//             } else {
+//                 error_log("Data missing for $field");
+//             }
+//         } else {
+//             error_log("Field $field is not visible");
+//         }
+//     }
+
+//     // Output PDF
+//     $upload_dir = wp_upload_dir();
+//     $pdf_path = $upload_dir['path'] . "/certificate_$post_id.pdf";
+//     $pdf->Output('F', $pdf_path);
+
+//     return $upload_dir['url'] . "/certificate_$post_id.pdf";
+// }
+
+function generate_certificate_pdf($post_id,$fields) {
     // Get the certificate type from the current post
     $certificate_type = get_post_meta($post_id, 'certificate_type', true);
 
     if (!$certificate_type) {
-        return '<p>Certificate type is missing for this post.</p>';
+        echo '<div class="notice notice-error"><p>Certificate type is missing for this post.</p></div>';
+        return false;
     }
 
     // Fetch certificate template details
@@ -530,6 +425,7 @@ function generate_certificate_pdf($post_id) {
     ]);
 
     if (!$certificate_query->have_posts()) {
+        echo '<div class="notice notice-error"><p>Unable to open the file. Please check the file and try again.</p></div>';
         return false; // No matching certificate template found
     }
 
@@ -542,8 +438,15 @@ function generate_certificate_pdf($post_id) {
     $font_color = get_post_meta($certificate_template->ID, 'font_color', true) ?: '#000000';
     $font_style = get_post_meta($certificate_template->ID, 'font_style', true) ?: 'Arial';
 
+    $validation_result = validate_template_url($template_url);
+
+    if ($validation_result !== true) {
+        // Validation failed
+        echo $validation_result;
+        return;
+    }
+
     // Fetch field positions dynamically
-    $fields = ['student_name', 'school_name', 'issue_date'];
     $field_positions = [];
 
     foreach ($fields as $index => $field) {
@@ -555,17 +458,45 @@ function generate_certificate_pdf($post_id) {
         ];
     }
 
-    // Fetch post data (student)
-    $issue_date_raw = get_post_meta($post_id, 'issue_date', true);
-    $post_data = [
-        'student_name' => get_post_meta($post_id, 'student_name', true),
-        'school_name' => get_post_meta($post_id, 'school_name', true),
-        'issue_date' => date('d-m-Y', strtotime($issue_date_raw)),
-    ];
+    // Fetch post data dynamically
+    $post_data = [];
+    foreach ($fields as $field) {
+        $post_data[$field] = get_post_meta($post_id, $field, true);
+    }
 
     // Generate PDF
     $pdf = new FPDF($template_orientation, 'mm', 'A4');
     $pdf->AddPage();
+
+    switch ($font_style) {
+        case 'Times New Roman':
+            $pdf->AddFont('Times New Roman', 'B', 'Times New Roman Bold.php');
+            $pdf->AddFont('Times New Roman', '', 'Times New Roman.php');
+            break;
+        case 'Helvetica':
+            $pdf->AddFont('Helvetica', 'B', 'helveticab.php');
+            $pdf->AddFont('Helvetica', '', 'helvetica.php');
+            break;
+        case 'Courier New':
+            $pdf->AddFont('Courier New', 'B', 'cour.php');
+            $pdf->AddFont('Courier New', '', 'cour.php');
+            break;
+        case 'Verdana':
+            $pdf->AddFont('Verdana', 'B', 'Verdanab.php');
+            $pdf->AddFont('Verdana', '', 'Verdana.php');
+            break;
+        case 'Palatino':
+            $pdf->AddFont('Palatino', 'B', 'Palatino Font.php');
+            $pdf->AddFont('Palatino', '', 'Palatino Font.php');
+            break;
+        case 'Garamond':
+            $pdf->AddFont('Garamond', 'B', 'garmond.php');
+            $pdf->AddFont('Garamond', '', 'Garamond Regular.php');
+            break;
+        default:
+            # code...
+            break;
+    }
 
     // Add template background
     if($template_orientation== 'landscape')
@@ -641,7 +572,8 @@ function scs_student_search_shortcode()
             while ($query->have_posts()) {
                 $query->the_post();
                 $post_id = get_the_ID();
-                $file_url = generate_certificate_pdf($post_id);
+                $fields = ['student_name', 'school_name', 'issue_date'];
+                $file_url = generate_certificate_pdf($post_id,$fields);
                 $output .= '<li style="padding: 15px 20px; border-bottom: 1px solid #ddd; font-size: 14px; display: flex; flex-direction: column; gap: 8px;">';
                 $output .= '<strong style="font-size: 16px; color: #333;">' . get_the_title() . '</strong>';
                 $output .= '<span style="color: #555;">School: ' . get_post_meta(get_the_ID(), 'school_name', true) . '</span>';
@@ -669,7 +601,6 @@ function scs_student_search_shortcode()
 
     return $output;
 }
-
 
 
 ?>

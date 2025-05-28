@@ -20,7 +20,7 @@
 }
 
 .certificate-card {
-    padding: 20px;
+    padding: 40px;
     background: #ffffff;
     border-radius: 10px;
     box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
@@ -115,3 +115,47 @@
 .certificate-form .search-button:hover {
     background: #005f8d;
 }
+
+* {
+    box-sizing: border-box;
+}
+
+@media (max-width: 768px) {
+    .certificate-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .certificate-card {
+        padding: 20px;
+    }
+
+    .certificate-form {
+        margin: 20px auto;
+        padding: 15px;
+    }
+}
+
+@media (max-width: 480px) {
+    .certificate-container {
+        padding: 10px;
+    }
+
+    .certificate-header {
+        font-size: 20px;
+    }
+
+    .certificate-card {
+        padding: 15px;
+    }
+
+    .certificate-form input {
+        padding: 10px;
+    }
+
+    .certificate-form .search-button,
+    .bulk-download-button {
+        padding: 10px 15px;
+        font-size: 14px;
+    }
+}
+

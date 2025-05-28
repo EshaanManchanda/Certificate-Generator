@@ -1861,7 +1861,7 @@ function scs_student_search_shortcode(){
             // Grid container with adaptive layout
             $output .= '<div class="certificate-grid" style="display: grid; grid-template-columns: ' . $grid_columns . '; ' . 
                       'gap: 25px; padding: 25px; background: ' . $card_bg . '; border-radius: ' . $border_radius . 'px; ' . 
-                      'box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05); justify-content: ' . $grid_justify . ';">';
+                      ' justify-content: ' . $grid_justify . ';">';
 
             // Certificate cards
             foreach ($certificates as $certificate) {
@@ -1872,8 +1872,8 @@ function scs_student_search_shortcode(){
                 $issue_date = get_post_meta($post_id, 'issue_date', true);
                 
                 // Card with hover effect - enhanced for single/multiple certificate layouts
-                $card_width = $cert_count === 1 ? '100%' : 'auto';
-                $card_padding = $cert_count === 1 ? '40px' : '30px';
+                $card_width = $cert_count === 1 ? '90%' : 'auto';
+                $card_padding = $cert_count === 1 ? '20px' : '30px';
                 $output .= '<div class="certificate-card" style="padding: ' . $card_padding . '; background: #ffffff; ' . 
                           'border-radius: ' . $border_radius . 'px; box-shadow: 0 8px 25px rgba(0, 0, 0, 0.06); ' . 
                           'transition: all 0.3s cubic-bezier(0.165, 0.84, 0.44, 1); transform: translateY(0); ' . 

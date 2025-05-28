@@ -2,10 +2,16 @@
 /**
  * Plugin Name: Certificate Generator
  * Description: A plugin for managing and generating certificates for students.
- * Version: 3.0.1
+ * Version: 4.0.1
  * Author: Eshaan Manchanda
  * Author URI: https://www.linkedin.com/in/eshaan-manchanda/
  */
+
+if (!defined('ABSPATH')) {
+    exit; // Exit if accessed directly
+}
+
+
 
 // Define constants for plugin paths
 define('CERTIFICATE_GENERATOR_PATH', plugin_dir_path(__FILE__));
@@ -25,6 +31,9 @@ $required_files = [
     'includes/student-certificate-search.php',          // Search Student
     'includes/bulk-import.php',             // Bulk import functionality for CSV uploads
     'includes/bulk-export.php',             // Bulk export functionality for CSV download
+    'includes/bulk-certificate-download.php', // Bulk certificate download for schools
+    'includes/class-certificate-background-processor.php', // Background processor for certificate generation
+    'includes/admin-settings.php',          // Admin settings page
 ];
 
 foreach ($required_files as $file) {

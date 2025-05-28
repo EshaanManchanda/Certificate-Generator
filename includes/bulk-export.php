@@ -335,12 +335,19 @@ function bulk_export_certificates() {
             'field_1_position_x',
             'field_1_position_y',
             'field_1_visible',
+            'field_1_width',
+            'field_1_alignment',
             'field_2_position_x',
             'field_2_position_y',
             'field_2_visible',
+            'field_2_width',
+            'field_2_alignment',
             'field_3_position_x',
             'field_3_position_y',
             'field_3_visible',
+            'field_3_width',
+            'field_3_alignment',
+            'width',
         ];
         fputcsv($output, $headers);
 
@@ -356,12 +363,19 @@ function bulk_export_certificates() {
                 get_post_meta($certificate->ID, 'field_1_position_x', true),
                 get_post_meta($certificate->ID, 'field_1_position_y', true),
                 get_post_meta($certificate->ID, 'field_1_visible', true),
+                get_post_meta($certificate->ID, 'field_1_width', true),
+                get_post_meta($certificate->ID, 'field_1_alignment', true),
                 get_post_meta($certificate->ID, 'field_2_position_x', true),
                 get_post_meta($certificate->ID, 'field_2_position_y', true),
                 get_post_meta($certificate->ID, 'field_2_visible', true),
+                get_post_meta($certificate->ID, 'field_2_width', true),
+                get_post_meta($certificate->ID, 'field_2_alignment', true),
                 get_post_meta($certificate->ID, 'field_3_position_x', true),
                 get_post_meta($certificate->ID, 'field_3_position_y', true),
                 get_post_meta($certificate->ID, 'field_3_visible', true),
+                get_post_meta($certificate->ID, 'field_3_width', true),
+                get_post_meta($certificate->ID, 'field_3_alignment', true),
+                get_post_meta($certificate->ID, 'width', true),
             ];
 
             fputcsv($output, $row);

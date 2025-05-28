@@ -13,7 +13,8 @@ if (!defined('ABSPATH')) {
 
 require_once __DIR__ . '/student-certificate-search.php';
 // Function to Register Custom Post Types
-function register_custom_post_type($type, $singular, $plural,$supports = ['title','custom-fields']) {
+function register_custom_post_type($type, $singular, $plural, $supports = ['title', 'custom-fields'])
+{
     register_post_type($type, [
         'labels' => [
             'name' => __($plural),
@@ -29,7 +30,8 @@ function register_custom_post_type($type, $singular, $plural,$supports = ['title
 }
 
 // Register All Custom Post Types
-function register_custom_post_types() {
+function register_custom_post_types()
+{
     register_custom_post_type('students', 'Student', 'Students');
     register_custom_post_type('teachers', 'Teacher', 'Teachers');
     register_custom_post_type('schools', 'School', 'Schools');
@@ -39,18 +41,20 @@ add_action('init', 'register_custom_post_types');
 
 
 // Define Fields for Students
-function render_students_form($post) {
+function render_students_form($post)
+{
     $student_name = get_post_meta($post->ID, 'student_name', true);
     $email = get_post_meta($post->ID, 'email', true);
     $school_name = get_post_meta($post->ID, 'school_name', true);
     $issue_date = get_post_meta($post->ID, 'issue_date', true);
     $certificate_type = get_post_meta($post->ID, 'certificate_type', true);
 
-    ?>
+?>
     <div class="custom-form-wrap">
         <div class="custom-form-group">
             <label for="student_name">Student Name:</label>
-            <input type="text" id="student_name" name="student_name" value="<?php echo esc_attr($student_name); ?>" class="custom-form-input">
+            <input type="text" id="student_name" name="student_name" value="<?php echo esc_attr($student_name); ?>"
+                class="custom-form-input">
         </div>
         <div class="custom-form-group">
             <label for="email">Email:</label>
@@ -58,22 +62,26 @@ function render_students_form($post) {
         </div>
         <div class="custom-form-group">
             <label for="school_name">School Name:</label>
-            <input type="text" id="school_name" name="school_name" value="<?php echo esc_attr($school_name); ?>" class="custom-form-input">
+            <input type="text" id="school_name" name="school_name" value="<?php echo esc_attr($school_name); ?>"
+                class="custom-form-input">
         </div>
         <div class="custom-form-group">
             <label for="issue_date">Issue Date:</label>
-            <input type="date" id="issue_date" name="issue_date" value="<?php echo esc_attr($issue_date); ?>" class="custom-form-input">
+            <input type="date" id="issue_date" name="issue_date" value="<?php echo esc_attr($issue_date); ?>"
+                class="custom-form-input">
         </div>
         <div class="custom-form-group">
             <label for="certificate_type">Certificate Type:</label>
-            <input type="text" id="certificate_type" name="certificate_type" value="<?php echo esc_attr($certificate_type); ?>" class="custom-form-input">
+            <input type="text" id="certificate_type" name="certificate_type"
+                value="<?php echo esc_attr($certificate_type); ?>" class="custom-form-input">
         </div>
     </div>
-    <?php
+<?php
 }
 
 // Add Meta Box for Students Post Type
-function add_students_meta_box() {
+function add_students_meta_box()
+{
     add_meta_box(
         'students_meta_box',
         'Student Details',
@@ -86,10 +94,12 @@ function add_students_meta_box() {
 add_action('add_meta_boxes', 'add_students_meta_box');
 
 // Save Students Data and Prevent Infinite Loop
-function save_students_data($post_id) {
+function save_students_data($post_id)
+{
     // Prevent recursion
     static $updating = false;
-    if ($updating) return;
+    if ($updating)
+        return;
 
     // Check if this is an autosave or if it's not a 'students' post type
     if (defined('DOING_AUTOSAVE') && DOING_AUTOSAVE) {
@@ -142,7 +152,8 @@ add_action('save_post', 'save_students_data');
 
 
 // Define Fields for Teachers
-function render_teachers_form($post) {
+function render_teachers_form($post)
+{
     $teacher_name = get_post_meta($post->ID, 'teacher_name', true);
     $email = get_post_meta($post->ID, 'email', true);
     $school_name = get_post_meta($post->ID, 'school_name', true);
@@ -150,11 +161,12 @@ function render_teachers_form($post) {
     $issue_date = get_post_meta($post->ID, 'issue_date', true);
     $certificate_type = get_post_meta($post->ID, 'certificate_type', true);
 
-    ?>
+?>
     <div class="custom-form-wrap">
         <div class="custom-form-group">
             <label for="teacher_name">Teacher Name:</label>
-            <input type="text" id="teacher_name" name="teacher_name" value="<?php echo esc_attr($teacher_name); ?>" class="custom-form-input">
+            <input type="text" id="teacher_name" name="teacher_name" value="<?php echo esc_attr($teacher_name); ?>"
+                class="custom-form-input">
         </div>
         <div class="custom-form-group">
             <label for="email">Email:</label>
@@ -162,26 +174,31 @@ function render_teachers_form($post) {
         </div>
         <div class="custom-form-group">
             <label for="school_name">School Name:</label>
-            <input type="text" id="school_name" name="school_name" value="<?php echo esc_attr($school_name); ?>" class="custom-form-input">
+            <input type="text" id="school_name" name="school_name" value="<?php echo esc_attr($school_name); ?>"
+                class="custom-form-input">
         </div>
         <div class="custom-form-group">
             <label for="school_abbreviation">School Abbreviation:</label>
-            <input type="text" id="school_abbreviation" name="school_abbreviation" value="<?php echo esc_attr($school_abbreviation); ?>" class="custom-form-input">
+            <input type="text" id="school_abbreviation" name="school_abbreviation"
+                value="<?php echo esc_attr($school_abbreviation); ?>" class="custom-form-input">
         </div>
         <div class="custom-form-group">
             <label for="issue_date">Issue Date:</label>
-            <input type="date" id="issue_date" name="issue_date" value="<?php echo esc_attr($issue_date); ?>" class="custom-form-input">
+            <input type="date" id="issue_date" name="issue_date" value="<?php echo esc_attr($issue_date); ?>"
+                class="custom-form-input">
         </div>
         <div class="custom-form-group">
             <label for="certificate_type">Certificate Type:</label>
-            <input type="text" id="certificate_type" name="certificate_type" value="<?php echo esc_attr($certificate_type); ?>" class="custom-form-input">
+            <input type="text" id="certificate_type" name="certificate_type"
+                value="<?php echo esc_attr($certificate_type); ?>" class="custom-form-input">
         </div>
     </div>
-    <?php
+<?php
 }
 
 // Add Meta Box for Teachers Post Type
-function add_teachers_meta_box() {
+function add_teachers_meta_box()
+{
     add_meta_box(
         'teachers_meta_box',
         'Teacher Details',
@@ -194,7 +211,8 @@ function add_teachers_meta_box() {
 add_action('add_meta_boxes', 'add_teachers_meta_box');
 
 // Save Teachers Data
-function save_teachers_data($post_id) {
+function save_teachers_data($post_id)
+{
     // Check if data is being saved correctly
     if (defined('DOING_AUTOSAVE') && DOING_AUTOSAVE) {
         return;
@@ -257,22 +275,25 @@ add_action('save_post', 'save_teachers_data', 10, 3);
 
 
 // Define Fields for Schools
-function render_schools_form($post) {
+function render_schools_form($post)
+{
     $school_name = get_post_meta($post->ID, 'school_name', true);
     $school_abbreviation = get_post_meta($post->ID, 'school_abbreviation', true);
     $place = get_post_meta($post->ID, 'place', true);
     $issue_date = get_post_meta($post->ID, 'issue_date', true);
     $certificate_type = get_post_meta($post->ID, 'certificate_type', true);
 
-    ?>
+?>
     <div class="custom-form-wrap">
         <div class="custom-form-group">
             <label for="school_name">School Name:</label>
-            <input type="text" id="school_name" name="school_name" value="<?php echo esc_attr($school_name); ?>" class="custom-form-input">
+            <input type="text" id="school_name" name="school_name" value="<?php echo esc_attr($school_name); ?>"
+                class="custom-form-input">
         </div>
         <div class="custom-form-group">
             <label for="school_abbreviation">School Abbreviation:</label>
-            <input type="text" id="school_abbreviation" name="school_abbreviation" value="<?php echo esc_attr($school_abbreviation); ?>" class="custom-form-input">
+            <input type="text" id="school_abbreviation" name="school_abbreviation"
+                value="<?php echo esc_attr($school_abbreviation); ?>" class="custom-form-input">
         </div>
         <div class="custom-form-group">
             <label for="place">Place:</label>
@@ -280,18 +301,21 @@ function render_schools_form($post) {
         </div>
         <div class="custom-form-group">
             <label for="issue_date">Issue Date:</label>
-            <input type="date" id="issue_date" name="issue_date" value="<?php echo esc_attr($issue_date); ?>" class="custom-form-input">
+            <input type="date" id="issue_date" name="issue_date" value="<?php echo esc_attr($issue_date); ?>"
+                class="custom-form-input">
         </div>
         <div class="custom-form-group">
             <label for="certificate_type">Certificate Type:</label>
-            <input type="text" id="certificate_type" name="certificate_type" value="<?php echo esc_attr($certificate_type); ?>" class="custom-form-input">
+            <input type="text" id="certificate_type" name="certificate_type"
+                value="<?php echo esc_attr($certificate_type); ?>" class="custom-form-input">
         </div>
     </div>
-    <?php
+<?php
 }
 
 // Add Meta Box for Schools Post Type
-function add_schools_meta_box() {
+function add_schools_meta_box()
+{
     add_meta_box(
         'schools_meta_box',
         'School Details',
@@ -304,7 +328,8 @@ function add_schools_meta_box() {
 add_action('add_meta_boxes', 'add_schools_meta_box');
 
 // Save Schools Data
-function save_schools_data($post_id) {
+function save_schools_data($post_id)
+{
     // Verify it's not an autosave
     if (defined('DOING_AUTOSAVE') && DOING_AUTOSAVE) {
         return;
@@ -359,7 +384,8 @@ function save_schools_data($post_id) {
 add_action('save_post', 'save_schools_data', 10, 3);
 
 // Define Fields for Certificates
-function render_certificates_form($post) {
+function render_certificates_form($post)
+{
     $certificate_type = get_post_meta($post->ID, 'certificate_type', true);
     $template_url = get_post_meta($post->ID, 'template_url', true);
     $template_orientation = get_post_meta($post->ID, 'template_orientation', true);
@@ -367,69 +393,120 @@ function render_certificates_form($post) {
     $font_color = get_post_meta($post->ID, 'font_color', true) ?: '#000000'; // Default black color
     $font_style = get_post_meta($post->ID, 'font_style', true) ?: 'Arial'; // Default font style
     $font_styles_list = ['Arial', 'Helvetica', 'Times New Roman', 'Courier New', 'Verdana', 'Palatino', 'Garamond'];
+    // Set paper sizes based on orientation
+    $paper_size = ($template_orientation == 'landscape') ? "Landscape (297mm x 210mm)" : "Portrait (210mm x 297mm)";
+    $width = get_post_meta($post->ID, 'width', true) ?: '210'; // Default width
 
-    ?>
+?>
     <div class="custom-form-wrap">
+        <h2>Certificate Configuration</h2>
+        <p><strong>Paper Size:</strong> <?php echo esc_html($paper_size); ?></p>
+
         <div class="custom-form-group">
-            <label for="certificate_type">Certificate Type:</label>
-            <input type="text" id="certificate_type" name="certificate_type" value="<?php echo esc_attr($certificate_type); ?>" class="custom-form-input">
+            <label for="certificate_type"><strong>Certificate Type:</strong></label>
+            <input type="text" id="certificate_type" name="certificate_type"
+                value="<?php echo esc_attr($certificate_type); ?>" class="custom-form-input">
         </div>
+
         <div class="custom-form-group">
-            <label for="template_url">Template URL:</label>
-            <input type="url" id="template_url" name="template_url" value="<?php echo esc_attr($template_url); ?>" class="custom-form-input">
+            <label for="template_url"><strong>Template URL:</strong></label>
+            <input type="url" id="template_url" name="template_url" value="<?php echo esc_attr($template_url); ?>"
+                class="custom-form-input">
         </div>
-    </div>
-    <div class="custom-form-group">
-            <label for="template_orientation">Template Orientation:</label>
+
+        <div class="custom-form-group">
+            <label for="template_orientation"><strong>Template Orientation:</strong></label>
             <select id="template_orientation" name="template_orientation" class="custom-form-input">
-                <option value="landscape" <?php selected($template_orientation, 'landscape'); ?>>Landscape</option>
-                <option value="portrait" <?php selected($template_orientation, 'portrait'); ?>>Portrait</option>
+                <option value="landscape" <?php selected($template_orientation, 'landscape'); ?>>Landscape (297x210 mm)
+                </option>
+                <option value="portrait" <?php selected($template_orientation, 'portrait'); ?>>Portrait (210x297 mm)
+                </option>
             </select>
         </div>
+
+        <h3>Font Settings</h3>
         <div class="custom-form-group">
-            <label for="font_size">Font Size:</label>
-            <input type="number" id="font_size" name="font_size" value="<?php echo esc_attr($font_size); ?>" class="custom-form-input">
+            <label for="font_size"><strong>Font Size:</strong></label>
+            <input type="number" id="font_size" name="font_size" value="<?php echo esc_attr($font_size); ?>"
+                class="custom-form-input" min="6" max="48">
         </div>
+
         <div class="custom-form-group">
-            <label for="font_color">Font Color:</label>
-            <input type="color" id="font_color" name="font_color" value="<?php echo esc_attr($font_color); ?>" class="custom-form-input">
+            <label for="font_color"><strong>Font Color:</strong></label>
+            <input type="color" id="font_color" name="font_color" value="<?php echo esc_attr($font_color); ?>"
+                class="custom-form-input">
         </div>
+
         <div class="custom-form-group">
-            <label for="font_style">Font Style:</label>
+            <label for="font_style"><strong>Font Style:</strong></label>
             <select id="font_style" name="font_style" class="custom-form-input">
                 <?php foreach ($font_styles_list as $style): ?>
-                    <option value="<?php echo esc_attr($style); ?>" <?php selected($font_style, $style); ?>><?php echo esc_html($style); ?></option>
+                    <option value="<?php echo esc_attr($style); ?>" <?php selected($font_style, $style); ?>>
+                        <?php echo esc_html($style); ?>
+                    </option>
                 <?php endforeach; ?>
             </select>
         </div>
-    <?php
 
-    for ($i = 1; $i <= 3; $i++) {
-        $position_x = get_post_meta($post->ID, "field_{$i}_position_x", true);
-        $position_y = get_post_meta($post->ID, "field_{$i}_position_y", true);
-        $visibility = get_post_meta($post->ID, "field_{$i}_visible", true);
+        <h3>Field Positioning (Based on Selected Orientation)</h3>
+        <p><strong>Note:</strong> Adjust X & Y positions based on the paper size above.</p>
+
+
+        <?php
+
+        for ($i = 1; $i <= 3; $i++) {
+            $position_x = get_post_meta($post->ID, "field_{$i}_position_x", true);
+            $position_y = get_post_meta($post->ID, "field_{$i}_position_y", true);
+            $visibility = get_post_meta($post->ID, "field_{$i}_visible", true) ?: '0';
+            $field_width = get_post_meta($post->ID, "field_{$i}_width", true) ?: '100'; // Default width
+            $alignment = get_post_meta($post->ID, "field_{$i}_alignment", true) ?: 'C'; // Default center alignment
 
         ?>
-        <div class="custom-form-wrap">
-            <div class="custom-form-group">
-                <label for="field_<?php echo $i; ?>_position_x">Field <?php echo $i; ?> Position X:</label>
-                <input type="number" id="field_<?php echo $i; ?>_position_x" name="field_<?php echo $i; ?>_position_x" value="<?php echo esc_attr($position_x); ?>" class="custom-form-input">
+            <div class="custom-form-wrap">
+                <h4>Field <?php echo $i; ?></h4>
+                <div class="custom-form-group">
+                    <label for="field_<?php echo $i; ?>_position_x"><strong>Position X:</strong> (0 to
+                        <?php echo ($template_orientation == 'landscape') ? '297' : '210'; ?> mm)</label>
+                    <input type="number" id="field_<?php echo $i; ?>_position_x" name="field_<?php echo $i; ?>_position_x"
+                        value="<?php echo esc_attr($position_x); ?>" class="custom-form-input" min="0"
+                        max="<?php echo ($template_orientation == 'landscape') ? '297' : '210'; ?>">
+                </div>
+                <div class="custom-form-group">
+                    <label for="field_<?php echo $i; ?>_position_y"><strong>Position Y:</strong> (0 to
+                        <?php echo ($template_orientation == 'landscape') ? '210' : '297'; ?> mm)</label>
+                    <input type="number" id="field_<?php echo $i; ?>_position_y" name="field_<?php echo $i; ?>_position_y"
+                        value="<?php echo esc_attr($position_y); ?>" class="custom-form-input" min="0"
+                        max="<?php echo ($template_orientation == 'landscape') ? '210' : '297'; ?>">
+                </div>
+                <div class="custom-form-group">
+                    <label for="field_<?php echo $i; ?>_visible"><strong>Visible:</strong></label>
+                    <input type="checkbox" id="field_<?php echo $i; ?>_visible" name="field_<?php echo $i; ?>_visible" value="1"
+                        <?php checked($visibility, '1'); ?>> Show this field
+                </div>
+                <div class="custom-form-group">
+                    <label for="field_<?php echo $i; ?>_width"><strong>Width:</strong></label>
+                    <input type="number" id="field_<?php echo $i; ?>_width" name="field_<?php echo $i; ?>_width"
+                        value="<?php echo esc_attr($field_width); ?>" class="custom-form-input" min="0" max="297">
+                </div>
+                <div class="custom-form-group">
+                    <label for="field_<?php echo $i; ?>_alignment"><strong>Alignment:</strong></label>
+                    <select id="field_<?php echo $i; ?>_alignment" name="field_<?php echo $i; ?>_alignment" class="custom-form-input">
+                        <option value="L" <?php selected($alignment, 'L'); ?>>Left</option>
+                        <option value="C" <?php selected($alignment, 'C'); ?>>Center</option>
+                        <option value="R" <?php selected($alignment, 'R'); ?>>Right</option>
+                    </select>
+                </div>
             </div>
-            <div class="custom-form-group">
-                <label for="field_<?php echo $i; ?>_position_y">Field <?php echo $i; ?> Position Y:</label>
-                <input type="number" id="field_<?php echo $i; ?>_position_y" name="field_<?php echo $i; ?>_position_y" value="<?php echo esc_attr($position_y); ?>" class="custom-form-input">
-            </div>
-            <div class="custom-form-group">
-                <label for="field_<?php echo $i; ?>_visible">Field <?php echo $i; ?> Visible:</label>
-                <input type="checkbox" id="field_<?php echo $i; ?>_visible" name="field_<?php echo $i; ?>_visible" value="1" <?php checked($visibility, '1'); ?>> Visible
-            </div>
-        </div>
         <?php
-    }
+        }
+        ?>
+    </div>
+<?php
 }
 
 // Add Meta Box for Certificates Post Type
-function add_certificates_meta_box() {
+function add_certificates_meta_box()
+{
     add_meta_box(
         'certificates_meta_box',
         'Certificate Details',
@@ -442,7 +519,8 @@ function add_certificates_meta_box() {
 add_action('add_meta_boxes', 'add_certificates_meta_box');
 
 // Save Certificates Data
-function save_certificates_data($post_id) {
+function save_certificates_data($post_id)
+{
     // Check if data is being saved correctly
     if (defined('DOING_AUTOSAVE') && DOING_AUTOSAVE) {
         return;
@@ -482,11 +560,20 @@ function save_certificates_data($post_id) {
 
         $visibility = isset($_POST["field_{$i}_visible"]) ? '1' : '0';
         update_post_meta($post_id, "field_{$i}_visible", $visibility);
+
+        if (isset($_POST["field_{$i}_width"])) {
+            update_post_meta($post_id, "field_{$i}_width", intval($_POST["field_{$i}_width"]));
+        }
+
+        if (isset($_POST["field_{$i}_alignment"])) {
+            update_post_meta($post_id, "field_{$i}_alignment", sanitize_text_field($_POST["field_{$i}_alignment"]));
+        }
     }
 
     // Auto-generate the title for the certificate
     $certificate_type = get_post_meta($post_id, 'certificate_type', true);
     $template_url = get_post_meta($post_id, 'template_url', true);
+    $width = get_post_meta($post_id, 'width', true);
 
     if ($certificate_type || $template_url) {
         $new_title = ($certificate_type ?: 'Certificate') . ' - ' . ($template_url ? parse_url($template_url, PHP_URL_HOST) : 'No Template URL');
@@ -506,7 +593,8 @@ add_action('save_post', 'save_certificates_data');
 
 // Add Preview Certificate Button to Certificates Admin Page
 add_action('add_meta_boxes', 'add_preview_certificate_meta_box');
-function add_preview_certificate_meta_box() {
+function add_preview_certificate_meta_box()
+{
     add_meta_box(
         'preview_certificate_meta_box',
         'Preview Certificate',
@@ -517,7 +605,8 @@ function add_preview_certificate_meta_box() {
     );
 }
 
-function render_preview_certificate_button($post) {
+function render_preview_certificate_button($post)
+{
     $preview_url = add_query_arg(
         ['preview_certificate' => '1', 'post_id' => $post->ID],
         site_url()
@@ -527,7 +616,8 @@ function render_preview_certificate_button($post) {
 }
 
 add_action('init', 'handle_certificate_preview');
-function handle_certificate_preview() {
+function handle_certificate_preview()
+{
     if (isset($_GET['preview_certificate']) && $_GET['preview_certificate'] === '1' && isset($_GET['post_id'])) {
         $post_id = intval($_GET['post_id']);
 
@@ -539,8 +629,8 @@ function handle_certificate_preview() {
 
         // Fetch certificate data
         $post_data = [
-            'student_name' => 'John Doe',
-            'school_name' => 'Example High School',
+            'student_name' => 'Jonathan Alexander Christopher Montgomery III',
+            'school_name' => 'The Prestigious International Institute of Advanced Technological and Scientific Studies',
             'issue_date' => '01-01-2025',
             'certificate_type' => $certificate_type,
         ];
@@ -782,24 +872,28 @@ $certificate_fields = [
 ];
 
 // Add Advanced Custom Fields
-function add_acf_field_group($group_key, $title, $fields, $post_type) {
+function add_acf_field_group($group_key, $title, $fields, $post_type)
+{
     if (function_exists('acf_add_local_field_group')) {
         acf_add_local_field_group([
             'key' => $group_key,
             'title' => $title,
             'fields' => $fields,
-            'location' => [[
+            'location' => [
                 [
-                    'param' => 'post_type',
-                    'operator' => '==',
-                    'value' => $post_type,
-                ],
-            ]],
+                    [
+                        'param' => 'post_type',
+                        'operator' => '==',
+                        'value' => $post_type,
+                    ],
+                ]
+            ],
         ]);
     }
 }
 
-function add_custom_fields() {
+function add_custom_fields()
+{
     global $student_fields, $teacher_fields, $school_fields, $certificate_fields;
     add_acf_field_group('group_students', 'Student Fields', $student_fields, 'students');
     add_acf_field_group('group_teachers', 'Teacher Fields', $teacher_fields, 'teachers');
@@ -823,7 +917,8 @@ add_action('acf/init', 'add_custom_fields');
 // add_action('admin_menu', 'custom_post_admin_menu');
 
 // Render the Admin Page
-function render_custom_post_admin_page() {
+function render_custom_post_admin_page()
+{
     echo '<div class="wrap">';
     echo '<h1>Manage Custom Post Data</h1>';
     echo '<form method="post" action="options.php">';

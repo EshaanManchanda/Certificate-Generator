@@ -34,7 +34,12 @@ function bulk_import_students() {
                     $words = explode(' ', $school_name);
                     $school_abbreviation = '';
                     foreach ($words as $word) {
-                        $school_abbreviation .= strtoupper($word[0]); // Get the first letter of each word
+                        if (!empty($word)) {
+                            $school_abbreviation .= strtoupper($word[0]); // Get the first letter of each word
+                        }
+                    }
+                    if (empty($school_abbreviation)) {
+                        $school_abbreviation = 'UNK'; // Default abbreviation if school name is empty
                     }
 
                     // Generate post title (student_name + school_abbreviation)
@@ -147,15 +152,25 @@ function bulk_import_teachers() {
                     $words = explode(' ', $school_name);
                     $school_abbreviation = '';
                     foreach ($words as $word) {
-                        $school_abbreviation .= strtoupper($word[0]); // Get the first letter of each word
+                        if (!empty($word)) {
+                            $school_abbreviation .= strtoupper($word[0]); // Get the first letter of each word
+                        }
+                    }
+                    if (empty($school_abbreviation)) {
+                        $school_abbreviation = 'UNK'; // Default abbreviation if school name is empty
                     }
 
                     // Generate post title (teacher_name + school_abbreviation)
                     $post_title = sanitize_text_field($teacher_data['teacher_name']) . ' (' . $school_abbreviation . ')';
 
                     // Check if a post with this title already exists
-                    $existing_post = get_page_by_title($post_title, OBJECT, 'teachers');
-                    if ($existing_post) {
+                    $existing_query = new WP_Query([
+                        'post_type' => 'teachers',
+                        'title' => $post_title,
+                        'posts_per_page' => 1,
+                        'fields' => 'ids'
+                    ]);
+                    if ($existing_query->have_posts()) {
                         continue; // Skip duplicate
                     }
 
@@ -263,15 +278,25 @@ function bulk_import_schools() {
                     $words = explode(' ', $school_name);
                     $school_abbreviation = '';
                     foreach ($words as $word) {
-                        $school_abbreviation .= strtoupper($word[0]); // Get the first letter of each word
+                        if (!empty($word)) {
+                            $school_abbreviation .= strtoupper($word[0]); // Get the first letter of each word
+                        }
+                    }
+                    if (empty($school_abbreviation)) {
+                        $school_abbreviation = 'UNK'; // Default abbreviation if school name is empty
                     }
 
                     // Generate post title (school_name + school_abbreviation)
                     $post_title = $school_name . ' (' . $school_abbreviation . ')';
 
                     // Check if a post with this title already exists
-                    $existing_post = get_page_by_title($post_title, OBJECT, 'schools');
-                    if ($existing_post) {
+                    $existing_query = new WP_Query([
+                        'post_type' => 'schools',
+                        'title' => $post_title,
+                        'posts_per_page' => 1,
+                        'fields' => 'ids'
+                    ]);
+                    if ($existing_query->have_posts()) {
                         continue; // Skip duplicate
                     }
 
@@ -370,12 +395,19 @@ function bulk_import_certificates() {
                     'field_1_position_x',
                     'field_1_position_y',
                     'field_1_visible',
+                    'field_1_width',
+                    'field_1_alignment',
                     'field_2_position_x',
                     'field_2_position_y',
                     'field_2_visible',
+                    'field_2_width',
+                    'field_2_alignment',
                     'field_3_position_x',
                     'field_3_position_y',
-                    'field_3_visible'
+                    'field_3_visible',
+                    'field_3_width',
+                    'field_3_alignment',
+                    'width'
                 ];
 
                 if ($header !== $required_fields) {
@@ -388,6 +420,35 @@ function bulk_import_certificates() {
                 $imported_count = 0;
                 while (($data = fgetcsv($handle, 1000, ',')) !== false) {
                     $certificate_data = array_combine($header, $data);
+                    
+                    // Generate certificate title for duplicate checking
+                    $certificate_type = sanitize_text_field($certificate_data['certificate_type']);
+                    $template_url = esc_url($certificate_data['template_url']);
+                    $new_title = ($certificate_type ?: 'Certificate') . ' - ' . ($template_url ? parse_url($template_url, PHP_URL_HOST) : 'No Template URL');
+                    
+                    // Check if a certificate with this template URL and type already exists
+                    $existing_query = new WP_Query([
+                        'post_type' => 'certificates',
+                        'title' => $new_title,
+                        'meta_query' => [
+                            'relation' => 'AND',
+                            [
+                                'key' => 'template_url',
+                                'value' => $certificate_data['template_url'],
+                                'compare' => '='
+                            ],
+                            [
+                                'key' => 'certificate_type',
+                                'value' => $certificate_data['certificate_type'],
+                                'compare' => '='
+                            ]
+                        ],
+                        'posts_per_page' => 1,
+                        'fields' => 'ids'
+                    ]);
+                    if ($existing_query->have_posts()) {
+                        continue; // Skip duplicate
+                    }
 
                     // Insert certificate as a custom post
                     $post_id = wp_insert_post([
@@ -400,7 +461,7 @@ function bulk_import_certificates() {
                         foreach ($certificate_data as $key => $value) {
                             // Force saving `1` or `0` as string
                             if (in_array($key, ['field_1_visible', 'field_2_visible', 'field_3_visible'])) {
-                                $value = (string)$value; // Ensure it’s saved as "1" or "0"
+                                $value = $value ? '1' : '0'; // Explicitly convert boolean to string
                             }
                             update_post_meta($post_id, $key, $value);
                         }

@@ -2016,8 +2016,8 @@ function scs_student_search_shortcode(){
             </div>';
             
             // Support section
-            $output .= '<div style="background: linear-gradient(to right, rgba(' . hex2rgb($btn_start) . ', 0.05), ' . 
-                      'rgba(' . hex2rgb($btn_end) . ', 0.05)); border-radius: ' . $border_radius . 'px; ' . 
+            $output .= '<div style="background: linear-gradient(to right, rgba(' . hex2rgb_str($btn_start) . ', 0.05), ' . 
+                      'rgba(' . hex2rgb_str($btn_end) . ', 0.05)); border-radius: ' . $border_radius . 'px; ' . 
                       'padding: 25px; margin: 25px 0; border-left: 4px solid ' . $btn_start . ';">';
             $output .= '<div style="display: flex; align-items: center; justify-content: center; margin-bottom: 15px;">' . 
                       '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" ' . 
@@ -2074,7 +2074,7 @@ function scs_student_search_shortcode(){
             
             // Use the existing hex2rgb function with default color if not set
             $hex_color = isset($hex_color) ? $hex_color : '#000000';
-            $rgb = hex2rgb($hex_color);
+            $rgb = hex2rgb_str($hex_color);
         }
 
         wp_reset_postdata();

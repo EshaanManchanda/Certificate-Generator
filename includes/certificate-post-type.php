@@ -12,6 +12,7 @@ if (!defined('ABSPATH')) {
 }
 
 require_once __DIR__ . '/student-certificate-search.php';
+require_once __DIR__ . '/admin-columns.php';
 // Function to Register Custom Post Types
 function register_custom_post_type($type, $singular, $plural, $supports = ['title', 'custom-fields'])
 {
@@ -19,6 +20,16 @@ function register_custom_post_type($type, $singular, $plural, $supports = ['titl
         'labels' => [
             'name' => __($plural),
             'singular_name' => __($singular),
+            'add_new' => __('Add New ' . $singular),
+            'add_new_item' => __('Add New ' . $singular),
+            'edit_item' => __('Edit ' . $singular),
+            'new_item' => __('New ' . $singular),
+            'view_item' => __('View ' . $singular),
+            'search_items' => __('Search ' . $plural),
+            'not_found' => __('No ' . strtolower($plural) . ' found'),
+            'not_found_in_trash' => __('No ' . strtolower($plural) . ' found in Trash'),
+            'all_items' => __('All ' . $plural),
+            'menu_name' => __($plural),
         ],
         'public' => true,
         'has_archive' => true,

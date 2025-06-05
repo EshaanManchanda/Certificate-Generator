@@ -17,7 +17,15 @@ The Certificate Generator plugin offers a comprehensive solution for educational
 
 ### Key Features
 
-*   **Custom Post Types:** Dedicated management areas for Students, Schools, and Teachers.
+*   **Custom Post Types:** Dedicated management areas for Students, Schools, and Teachers with enhanced table UI:
+    * Sortable columns for Email, School Name, Certificate Type, and Issue Date
+    * Quick search functionality across all fields including email addresses
+    * Modern table layout with improved readability
+    * Visual indicators for empty fields
+*   **Advanced Search Capabilities:**
+    * Global search across multiple fields (email, name, school, certificate type)
+    * Smart search that works with partial matches
+    * Improved search response time with optimized queries
 *   **Bulk Data Import:** Easily upload Student, School, and Teacher data via CSV files. (See <mcfolder name="includes" path="c:\Users\eshaa\Local Sites\test\app\public\wp-content\plugins\certificate-generator\includes"></mcfolder> - <mcfile name="bulk-import.php" path="c:\Users\eshaa\Local Sites\test\app\public\wp-content\plugins\certificate-generator\includes\bulk-import.php"></mcfile>)
 *   **Bulk Data Export:** Export Student, School, and Teacher data to CSV. (See <mcfolder name="includes" path="c:\Users\eshaa\Local Sites\test\app\public\wp-content\plugins\certificate-generator\includes"></mcfolder> - <mcfile name="bulk-export.php" path="c:\Users\eshaa\Local Sites\test\app\public\wp-content\plugins\certificate-generator\includes\bulk-export.php"></mcfile>)
 *   **Dynamic PDF Generation:** Automatically generate PDF certificates with customizable templates and fields. (See <mcfile name="certificate-generator.php" path="c:\Users\eshaa\Local Sites\test\app\public\wp-content\plugins\certificate-generator\certificate-generator.php"></mcfile> and <mcfile name="student-certificate-search.php" path="c:\Users\eshaa\Local Sites\test\app\public\wp-content\plugins\certificate-generator\includes\student-certificate-search.php"></mcfile>)
@@ -51,7 +59,29 @@ The Certificate Generator plugin offers a comprehensive solution for educational
 
 ## Functionality Details
 
-### 1. Admin Settings
+### 1. Enhanced Admin Interface
+
+The admin interface has been significantly improved with a modern, user-friendly table layout:
+
+* **Sortable Columns:**
+  * Email - Sort entries alphabetically by email address
+  * School Name - Organize entries by school
+  * Certificate Type - Group similar certificates together
+  * Issue Date - Sort by newest or oldest first
+
+* **Advanced Search Features:**
+  * Universal Search Box - Searches across all relevant fields
+  * Smart Matching - Finds partial matches in email addresses and names
+  * Real-time Results - Updates as you type
+  * Clear Visual Feedback - Shows when no results are found
+
+* **Table Improvements:**
+  * Cleaner Layout - Better spacing and alignment
+  * Visual Indicators - Clear display of empty fields with "—"
+  * Responsive Design - Adapts to different screen sizes
+  * Optimized Performance - Faster loading and sorting
+
+### 2. Admin Settings
 
 Access the settings via **Settings > Certificate Generator**. Here you can configure:
 
@@ -64,7 +94,7 @@ Access the settings via **Settings > Certificate Generator**. Here you can confi
     *   Hover Effect Intensity (card lift)
     *   Border Radius (for cards and buttons)
 
-![Admin Settings Panel](/assets/screenshots/admin-settings-panel.png) *(New screenshot needed for the actual admin settings panel)*
+![Admin Settings Panel](/assets/screenshots/setting%20page.png) *(New screenshot needed for the actual admin settings panel)*
 
 ### 2. Bulk Import
 
@@ -92,23 +122,23 @@ Use the following shortcodes on any page or post to display search forms:
     *   If multiple certificates are found, a "Download All Certificates" button (ZIP) is provided.
     *   Features improved UI with responsive design, hover effects, and clear metadata display.
 
-    ![Student Search Form](/assets/screenshots/student-search-form-ui.png) *(New screenshot needed for the improved student search form)*
-    ![Student Search Results](/assets/screenshots/student-search-results-ui.png) *(New screenshot needed for the improved student search results/cards)*
-
+    ![Student Search Form](/assets/screenshots/Student%20Form.png) *(New screenshot needed for the improved student search form)*
+    ![Student Search Results](/assets/screenshots/result.png) *(New screenshot needed for the improved student search results/cards)*
+    ![Student bulk certificate Download](/assets/screenshots/bulk%20certificate.png)
 *   **School Search (`[school_search]`):**
     *   Allows users to search for all certificates associated with a specific school name and place.
     *   Displays certificate cards for each matching record.
     *   Provides a "Download All Certificates" button to download a ZIP archive of all found certificates.
     *   Features enhanced UI, robust error handling with support information, and improved button styling.
 
-    ![School Search Form](/assets/screenshots/school-search-form-ui.png) *(New screenshot needed for the improved school search form)*
+    ![School Search Form](/assets/screenshots/school%20form.png) *(New screenshot needed for the improved school search form)*
     ![School Search Results](/assets/screenshots/school-search-results-ui.png) *(New screenshot needed for the improved school search results/cards)*
 
 *   **Teacher Search (`[teacher_search]`):**
     *   Allows teachers to search for their certificates using their email address.
     *   Similar UI and functionality to the student search.
 
-    ![Teacher Search Form](/assets/screenshots/teacher-search-form-ui.png) *(New screenshot needed for the improved teacher search form)*
+    ![Teacher Search Form](/assets/screenshots/Teacher%20Form.png) *(New screenshot needed for the improved teacher search form)*
 
 ### 5. Bulk Certificate Download
 
@@ -117,9 +147,7 @@ Use the following shortcodes on any page or post to display search forms:
 *   **Dedicated School Bulk Download Shortcode (`[school_bulk_certificate_download]`):**
     *   Provides a form to enter a school name.
     *   Upon submission, it finds all associated students/certificates and generates a ZIP file for download.
-    *   Includes a progress bar to show the status of certificate generation and ZIP creation.
-
-    ![Bulk Download Progress Bar](/assets/screenshots/bulk-download-progress.png) *(New screenshot needed for the bulk download progress UI)*
+    
 
 ### 6. Certificate Creation and Design
 
@@ -203,6 +231,10 @@ A: The search results will display all associated certificates. For bulk downloa
 ## Changelog
 
 ### 3.3.1 (Planned)
+*   **Admin Table UI Enhancement:** 
+    * Added sortable columns for Email, School Name, Certificate Type, and Issue Date
+    * Implemented improved search functionality across all fields
+    * Enhanced table layout with better visual indicators and responsiveness
 *   **Major UI Overhaul:** Implemented modern, responsive UI for frontend search forms, certificate cards, and buttons with enhanced hover effects and SVG icons.
 *   **Admin Settings Enhancements:** Added comprehensive styling options in the admin panel for frontend components (colors, gradients, hover effects, border-radius).
 *   **Bulk Certificate Download for Schools:** Implemented robust ZIP file generation for all certificates associated with a school, accessible via school search results and a dedicated shortcode `[school_bulk_certificate_download]` with progress tracking.

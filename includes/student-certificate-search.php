@@ -610,12 +610,14 @@ function generate_certificate_pdf($post_id, $fields) {
 
 
 
+    // Validate the template URL
+    error_log("Validating template URL: {$template_url}");
     $validation_result = validate_template_url($template_url);
     if ($validation_result !== true) {
-
-        echo $validation_result;
+        error_log('Template URL validation failed: ' . $validation_result);
         return false;
     }
+    error_log("Template URL validation successful");
 
     // Fetch field positions dynamically from the certificate template
     $field_positions = [];
@@ -626,13 +628,6 @@ function generate_certificate_pdf($post_id, $fields) {
         
         $position_x = get_post_meta($certificate_template->ID, "field_{$field_key}_position_x", true);
         $position_y = get_post_meta($certificate_template->ID, "field_{$field_key}_position_y", true);
-        
-        // Check if positions are set
-        if (empty($position_x) || empty($position_y)) {
-            $missing_positions[] = $field;
-
-            continue;
-        }
         
         $field_positions[$field] = [
             'x' => $position_x,
@@ -650,7 +645,6 @@ function generate_certificate_pdf($post_id, $fields) {
     if (empty($field_positions)) {
         $missing_fields = implode(', ', $missing_positions);
         error_log("Certificate generation failed: No valid field positions found. Missing positions for: " . $missing_fields);
-        echo '<div class="notice notice-error"><p>Certificate template is missing field positions for: ' . esc_html($missing_fields) . '</p></div>';
         return false;
     }
 
@@ -658,16 +652,16 @@ function generate_certificate_pdf($post_id, $fields) {
     $post_data = [];
     $missing_data = [];
     
-    foreach ($fields as $field) {
-        $value = get_post_meta($post_id, $field, true);
+    foreach ($fields as $field_name) {
+        $value = get_post_meta($post_id, $field_name, true);
         if (empty($value)) {
-            $missing_data[] = $field;
-            error_log("Missing data for field {$field}");
+            $missing_data[] = $field_name;
+            error_log("Missing data for field {$field_name}");
             continue;
         }
         
         // Format issue_date to dd-mm-yyyy if it exists
-        if ($field === 'issue_date') {
+        if ($field_name === 'issue_date') {
             // Try to parse the date
             $date_obj = DateTime::createFromFormat('Y-m-d', $value);
             if ($date_obj) {
@@ -683,14 +677,13 @@ function generate_certificate_pdf($post_id, $fields) {
             error_log("Formatted issue_date: " . $value);
         }
         
-        $post_data[$field] = $value;
+        $post_data[$field_name] = $value;
     }
     
     // Check if we have any post data
     if (empty($post_data)) {
         $missing_fields = implode(', ', $missing_data);
         error_log("Certificate generation failed: No valid post data found. Missing data for: " . $missing_fields);
-        echo '<div class="notice notice-error"><p>Certificate data is missing for: ' . esc_html($missing_fields) . '</p></div>';
         return false;
     }
     
@@ -742,7 +735,6 @@ function generate_certificate_pdf($post_id, $fields) {
             $pdf->Image($template_url, 0, 0, $template_orientation === 'landscape' ? 297 : 210, $template_orientation === 'landscape' ? 210 : 297);
         } catch (Exception $e) {
             error_log("Error adding template image: " . $e->getMessage());
-            echo '<div class="notice notice-error"><p>Error loading template image: ' . esc_html($e->getMessage()) . '</p></div>';
             return false;
         }
 
@@ -866,6 +858,8 @@ function generate_certificate_pdf($post_id, $fields) {
         
         // Use consistent path format with correct directory separators
         $pdf_path = rtrim($upload_path, '/\\') . DIRECTORY_SEPARATOR . "certificate_$post_id.pdf";
+        // Normalize the path to handle mixed separators consistently
+        $pdf_path = wp_normalize_path($pdf_path);
         
         // Debug: Log upload directory and file path
         error_log("Upload directory: " . print_r($upload_dir, true));
@@ -874,7 +868,6 @@ function generate_certificate_pdf($post_id, $fields) {
         // Check if directory is writable
         if (!is_writable($upload_path)) {
             error_log("Upload directory is not writable: " . $upload_path);
-            echo '<div class="notice notice-error"><p>Upload directory is not writable. Please check permissions.</p></div>';
             return false;
         }
         
@@ -888,7 +881,6 @@ function generate_certificate_pdf($post_id, $fields) {
             error_log("PDF Path: " . $pdf_path);
             error_log("Field Positions: " . print_r($field_positions, true));
             error_log("Post Data: " . print_r($post_data, true));
-            echo '<div class="notice notice-error"><p>' . esc_html($error_msg) . '</p></div>';
             return false;
         }
         
@@ -898,7 +890,6 @@ function generate_certificate_pdf($post_id, $fields) {
             error_log($error_msg);
             error_log("Upload directory permissions: " . (is_writable($upload_path) ? 'writable' : 'not writable'));
             error_log("Free disk space: " . disk_free_space($upload_path) . " bytes");
-            echo '<div class="notice notice-error"><p>' . esc_html($error_msg) . '</p></div>';
             return false;
         }
         
@@ -913,9 +904,94 @@ function generate_certificate_pdf($post_id, $fields) {
         return $file_url;
     } catch (Exception $e) {
         error_log("Exception during PDF generation: " . $e->getMessage());
-        echo '<div class="notice notice-error"><p>Error generating PDF: ' . esc_html($e->getMessage()) . '</p></div>';
         return false;
     }
+}
+
+/**
+ * Generate certificate PDF for email purposes
+ *
+ * This function wraps generate_certificate_pdf and returns both the file path and URL
+ * to make it compatible with the email system in email-functions.php
+ *
+ * @param int $post_id The post ID of the student, teacher, or school
+ * @param array $fields The fields to include in the certificate
+ * @param array|null $email_options Optional email options
+ * @return array|bool Array containing 'path' and 'url' of the generated PDF, or false on failure
+ */
+function generate_certificate_pdf_email($post_id, $fields, $email_options = null) {
+    // Debug log the input parameters
+    error_log("Generating certificate PDF for email. Post ID: {$post_id}");
+    error_log("Fields: " . print_r($fields, true));
+    error_log("Email options: " . print_r($email_options, true));
+    
+    // Ensure we have valid fields based on post type if not provided
+    if (empty($fields)) {
+        $post_type = get_post_type($post_id);
+        switch ($post_type) {
+            case 'students':
+                $fields = ['student_name', 'school_name', 'issue_date'];
+                break;
+            case 'teachers':
+                $fields = ['teacher_name', 'school_name', 'issue_date'];
+                break;
+            case 'schools':
+                $fields = ['school_name', 'issue_date'];
+                break;
+            default:
+                error_log("Invalid post type: {$post_type}");
+                return false;
+        }
+        error_log("Using default fields for post type {$post_type}: " . print_r($fields, true));
+    }
+    
+    // Call the original function to generate the PDF (removed $email_options)
+    $certificate_url = generate_certificate_pdf($post_id, $fields);
+    
+    // If PDF generation failed, return false
+    if (!$certificate_url) {
+        error_log("Certificate generation failed for post ID: {$post_id}");
+        return false;
+    }
+    
+    // Get the file path from post meta
+    $certificate_path = get_post_meta($post_id, 'certificate_file_path', true);
+    
+    // Normalize the path to handle mixed separators on Windows
+    if (!empty($certificate_path)) {
+        $certificate_path = wp_normalize_path($certificate_path);
+        // Update the meta with normalized path
+        update_post_meta($post_id, 'certificate_file_path', $certificate_path);
+    }
+    
+    // Verify the file exists
+    if (empty($certificate_path) || !file_exists($certificate_path)) {
+        error_log("Certificate file not found at path: {$certificate_path}");
+        // Try to regenerate if file doesn't exist
+        error_log("Attempting to regenerate certificate for post ID: {$post_id}");
+        // Removed $email_options
+        $certificate_url = generate_certificate_pdf($post_id, $fields);
+        if ($certificate_url) {
+            $certificate_path = get_post_meta($post_id, 'certificate_file_path', true);
+            $certificate_path = wp_normalize_path($certificate_path);
+            if (file_exists($certificate_path)) {
+                error_log("Certificate regenerated successfully at: {$certificate_path}");
+            } else {
+                error_log("Certificate regeneration failed for post ID: {$post_id}");
+                return false;
+            }
+        } else {
+            return false;
+        }
+    }
+    
+    error_log("Certificate generated successfully. Path: {$certificate_path}, URL: {$certificate_url}");
+    
+    // Return both the file path and URL
+    return [
+        'path' => $certificate_path,
+        'url' => $certificate_url
+    ];
 }
 
 // Shortcode to search for teacher certificates
@@ -965,6 +1041,11 @@ function teacher_search_shortcode(){
                         'url' => $file_url,
                         'post_id' => $post_id
                     ];
+                    
+                    // Auto-send email if enabled and not already sent
+                    if (function_exists('certificate_generator_auto_send_email')) {
+                        certificate_generator_auto_send_email($post_id, 'teachers');
+                    }
                 } else {
                     $error_count++;
                     $certificates_to_generate_bg[] = [
@@ -1283,7 +1364,6 @@ function teacher_search_shortcode(){
 
 // Shortcode to search for school certificates
 add_shortcode('school_search', 'school_search_shortcode');
-
 function school_search_shortcode() {
     // Check if input parameters are provided
     if (isset($_GET['school_name']) && isset($_GET['place'])) {
@@ -1388,6 +1468,11 @@ function school_search_shortcode() {
                         
                         // Mark this certificate as processed
                         $processed_certificates[$certificate_key] = true;
+                        
+                        // Auto-send email if enabled and not already sent
+                        if (function_exists('certificate_generator_auto_send_email')) {
+                            certificate_generator_auto_send_email($post_id, 'schools');
+                        }
                     }
                 } else {
                     $error_count++;
@@ -1782,6 +1867,11 @@ function scs_student_search_shortcode(){
                         
                         // Mark this certificate as processed
                         $processed_certificates[$certificate_key] = true;
+                        
+                        // Auto-send email if enabled and not already sent
+                        if (function_exists('certificate_generator_auto_send_email')) {
+                            certificate_generator_auto_send_email($post_id, 'students');
+                        }
                     }
                 }
             }
@@ -2016,8 +2106,8 @@ function scs_student_search_shortcode(){
             </div>';
             
             // Support section
-            $output .= '<div style="background: linear-gradient(to right, rgba(' . hex2rgb($btn_start) . ', 0.05), ' . 
-                      'rgba(' . hex2rgb($btn_end) . ', 0.05)); border-radius: ' . $border_radius . 'px; ' . 
+            $output .= '<div style="background: linear-gradient(to right, rgba(' . hex2rgb_str($btn_start) . ', 0.05), ' . 
+                      'rgba(' . hex2rgb_str($btn_end) . ', 0.05)); border-radius: ' . $border_radius . 'px; ' . 
                       'padding: 25px; margin: 25px 0; border-left: 4px solid ' . $btn_start . ';">';
             $output .= '<div style="display: flex; align-items: center; justify-content: center; margin-bottom: 15px;">' . 
                       '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" ' . 
@@ -2074,7 +2164,7 @@ function scs_student_search_shortcode(){
             
             // Use the existing hex2rgb function with default color if not set
             $hex_color = isset($hex_color) ? $hex_color : '#000000';
-            $rgb = hex2rgb($hex_color);
+            $rgb = hex2rgb_str($hex_color);
         }
 
         wp_reset_postdata();

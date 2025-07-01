@@ -12,6 +12,7 @@ if (!defined('ABSPATH')) {
 }
 
 require_once __DIR__ . '/student-certificate-search.php';
+require_once __DIR__ . '/admin-columns.php';
 // Function to Register Custom Post Types
 function register_custom_post_type($type, $singular, $plural, $supports = ['title', 'custom-fields'])
 {
@@ -19,6 +20,16 @@ function register_custom_post_type($type, $singular, $plural, $supports = ['titl
         'labels' => [
             'name' => __($plural),
             'singular_name' => __($singular),
+            'add_new' => __('Add New ' . $singular),
+            'add_new_item' => __('Add New ' . $singular),
+            'edit_item' => __('Edit ' . $singular),
+            'new_item' => __('New ' . $singular),
+            'view_item' => __('View ' . $singular),
+            'search_items' => __('Search ' . $plural),
+            'not_found' => __('No ' . strtolower($plural) . ' found'),
+            'not_found_in_trash' => __('No ' . strtolower($plural) . ' found in Trash'),
+            'all_items' => __('All ' . $plural),
+            'menu_name' => __($plural),
         ],
         'public' => true,
         'has_archive' => true,
@@ -36,6 +47,86 @@ function register_custom_post_types()
     register_custom_post_type('teachers', 'Teacher', 'Teachers');
     register_custom_post_type('schools', 'School', 'Schools');
     register_custom_post_type('certificates', 'Certificate', 'Certificates');
+}
+
+// Add Email Logs Meta Box for Certificates
+function add_certificate_email_logs_meta_box() {
+    add_meta_box(
+        'certificate_email_logs_meta_box',
+        'Email Logs',
+        'render_certificate_email_logs',
+        'certificates',
+        'normal',
+        'low'
+    );
+}
+add_action('add_meta_boxes', 'add_certificate_email_logs_meta_box');
+
+// Render Email Logs Meta Box
+function render_certificate_email_logs($post) {
+    // Get logs using the core function
+    $logs_data = certificate_generator_get_email_logs([
+        'per_page' => 10,
+        'cert_id' => $post->ID
+    ]);
+    
+    $logs = $logs_data['logs'];
+    
+    // Add inline styles
+    echo '<style>
+        #certificate_email_logs_meta_box .inside {
+            padding: 0;
+            margin: 0;
+        }
+        #certificate_email_logs_meta_box table {
+            border: none;
+            margin: 0;
+        }
+        #certificate_email_logs_meta_box th {
+            background: #f8f9fa;
+            padding: 8px;
+        }
+        #certificate_email_logs_meta_box td {
+            padding: 12px 8px;
+        }
+        #certificate_email_logs_meta_box .error {
+            color: #dc3545;
+        }
+        #certificate_email_logs_meta_box .button {
+            margin: 10px;
+        }
+    </style>';
+
+    if (empty($logs)) {
+        echo '<p>' . esc_html__('No email logs found for this certificate.', 'certificate-generator') . '</p>';
+        return;
+    }
+    
+    echo '<table class="widefat fixed striped">';
+    echo '<thead><tr>';
+    echo '<th>' . esc_html__('Date', 'certificate-generator') . '</th>';
+    echo '<th>' . esc_html__('Recipient', 'certificate-generator') . '</th>';
+    echo '<th>' . esc_html__('Status', 'certificate-generator') . '</th>';
+    echo '<th>' . esc_html__('Details', 'certificate-generator') . '</th>';
+    echo '</tr></thead>';
+    
+    foreach ($logs as $log) {
+        echo '<tr>';
+        echo '<td>' . esc_html(date_i18n(get_option('date_format') . ' ' . get_option('time_format'), strtotime($log->sent_at))) . '</td>';
+        echo '<td>' . esc_html($log->recipient_email) . '<br>' . esc_html($log->recipient_name) . '</td>';
+        echo '<td>' . esc_html(ucfirst($log->status)) . '</td>';
+        echo '<td>';
+        if ($log->status === 'failed' && !empty($log->error_message)) {
+            echo '<span class="error">' . esc_html($log->error_message) . '</span>';
+        } else {
+            echo esc_html($log->email_subject);
+        }
+        echo '</td>';
+        echo '</tr>';
+    }
+    
+    echo '</table>';
+    echo '<p><a href="' . esc_url(admin_url('admin.php?page=certificate-email-logs')) . '" class="button">' . esc_html__('View All Logs', 'certificate-generator') . '</a></p>';
 }
 add_action('init', 'register_custom_post_types');
 

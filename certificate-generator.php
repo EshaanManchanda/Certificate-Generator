@@ -21,7 +21,22 @@ define('CERTIFICATE_GENERATOR_URL', plugin_dir_url(__FILE__));
 // Enqueue CSS and JS for Admin UI
 function custom_admin_assets() {
     wp_enqueue_style('custom-admin-css', plugin_dir_url(__FILE__) . 'assets/css/admin-style.css');
-    wp_enqueue_script('custom-admin-js', plugin_dir_url(__FILE__) . 'assets/js/admin-script.js', ['jquery'], null, true);
+    
+    // Enqueue admin scripts
+    add_action('admin_enqueue_scripts', function($hook) {
+        // Always load the main admin script
+        wp_enqueue_script('custom-admin-js', plugin_dir_url(__FILE__) . 'assets/js/admin-script.js', ['jquery'], null, true);
+        
+        // Only load debug scripts if WP_DEBUG is enabled
+        if (defined('WP_DEBUG') && WP_DEBUG) {
+            // Check if we're on the settings page
+            if (strpos($hook, 'certificate_generator_settings') !== false) {
+                wp_enqueue_script('api-debug-js', plugin_dir_url(__FILE__) . 'assets/js/api-debug.js', ['jquery'], time(), true);
+                wp_enqueue_script('tab-debug-js', plugin_dir_url(__FILE__) . 'assets/js/tab-debug.js', ['jquery'], time(), true);
+                wp_enqueue_script('api-key-fix-js', plugin_dir_url(__FILE__) . 'assets/js/api-key-fix.js', ['jquery'], time(), true);
+            }
+        }
+    });
 }
 add_action('admin_enqueue_scripts', 'custom_admin_assets');
 
@@ -34,7 +49,17 @@ $required_files = [
     'includes/bulk-certificate-download.php', // Bulk certificate download for schools
     'includes/class-certificate-background-processor.php', // Background processor for certificate generation
     'includes/admin-settings.php',          // Admin settings page
+    'includes/admin-columns.php',           // Admin columns
+    'includes/api-endpoints.php',           // API endpoints for AI integration
+    'includes/email-functions.php',         // Email functionality
+    'includes/email-log.php',              // Email logging functionality
+    'includes/admin-email-logs.php'        // Admin interface for email logs
 ];
+
+// Only load debug tools in development environments
+if (defined('WP_DEBUG') && WP_DEBUG) {
+    $required_files[] = 'debug-tools.php';
+}
 
 foreach ($required_files as $file) {
     $path = CERTIFICATE_GENERATOR_PATH . $file;
@@ -64,8 +89,36 @@ function certificate_generator_activate() {
             PRIMARY KEY  (id)
         ) $charset_collate;";
 
+        // Create email logs table
+        require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
+        certificate_generator_create_email_log_table();
+
         require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
         dbDelta($sql);
+    }
+
+    // Create email log table
+    if (function_exists('certificate_generator_create_email_log_table')) {
+        certificate_generator_create_email_log_table();
+    }
+
+    // Set default email options
+    $default_options = [
+        'auto_send_enabled' => false,
+        'email_logo' => '',
+        'email_subject' => 'Your Certificate is Ready',
+        'email_message' => 'Dear {name},\n\nYour certificate is ready for download. Please find it attached to this email.\n\nBest regards,\nThe Certificate Team'
+    ];
+    
+    foreach ($default_options as $key => $value) {
+        if (get_option('certificate_generator_' . $key) === false) {
+            add_option('certificate_generator_' . $key, $value);
+        }
+    }
+
+    // Schedule cleanup cron job
+    if (!wp_next_scheduled('certificate_generator_cleanup_logs')) {
+        wp_schedule_event(time(), 'weekly', 'certificate_generator_cleanup_logs');
     }
 }
 register_activation_hook(__FILE__, 'certificate_generator_activate');
@@ -73,6 +126,9 @@ register_activation_hook(__FILE__, 'certificate_generator_activate');
 // Plugin deactivation hook
 function certificate_generator_deactivate() {
     flush_rewrite_rules(); // Flush rewrite rules on deactivation
+    
+    // Clear scheduled cron jobs
+    wp_clear_scheduled_hook('certificate_generator_cleanup_logs');
 }
 register_deactivation_hook(__FILE__, 'certificate_generator_deactivate');
 

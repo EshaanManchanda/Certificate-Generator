@@ -170,7 +170,124 @@ For detailed integration examples and AI agent workflows, see the `API-INTEGRATI
 - Monitor API usage through WordPress logs
 - Disable API access when not needed
 
-[Rest of the existing readme content remains unchanged...]
+## Troubleshooting Guide
+
+### Quick Diagnosis
+
+If you encounter issues during plugin activation or operation, follow these steps:
+
+1. **Check Environment:**
+   - Local Development: Ensure MySQL service is running
+   - Live Server: Verify WordPress file permissions
+   - Check PHP version compatibility (7.4+)
+
+2. **Database Issues:**
+   ```sql
+   -- Verify tables exist
+   SHOW TABLES LIKE 'wp_certificate%';
+   
+   -- Manual table creation if needed
+   CREATE TABLE IF NOT EXISTS wp_certificate_generator (
+       id mediumint(9) NOT NULL AUTO_INCREMENT,
+       student_name varchar(255) NOT NULL,
+       certificate_data text NOT NULL,
+       created_at datetime DEFAULT CURRENT_TIMESTAMP,
+       PRIMARY KEY (id)
+   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+   
+   CREATE TABLE IF NOT EXISTS wp_cert_email_logs (
+       id mediumint(9) NOT NULL AUTO_INCREMENT,
+       recipient_email varchar(255) NOT NULL,
+       student_name varchar(255) NOT NULL,
+       certificate_id mediumint(9) NOT NULL,
+       email_subject varchar(500) NOT NULL,
+       email_body text NOT NULL,
+       sent_at datetime DEFAULT CURRENT_TIMESTAMP,
+       status varchar(20) DEFAULT 'pending',
+       PRIMARY KEY (id)
+   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+   ```
+
+3. **Path Issues:**
+   - Verify WordPress admin includes directory accessibility
+   - Check for proper file permissions (755 for directories, 644 for files)
+   - Use the built-in path verification tool
+
+### Debug Tools
+
+1. **API Debug Dashboard:**
+   - Access via Settings > API Debug Dashboard
+   - View API access status
+   - Test API endpoints
+   - Monitor API key management
+
+2. **Email Diagnostic Tools:**
+   - Built-in email testing tool
+   - SMTP configuration verification
+   - Email delivery logging
+   - Debug mode for detailed error tracking
+
+3. **Database Diagnostic:**
+   - Table structure verification
+   - Data integrity checks
+   - Auto-repair functionality
+
+### Common Issues and Solutions
+
+1. **Activation Errors:**
+   - Clear plugin cache
+   - Verify database permissions
+   - Check WordPress version compatibility
+   - Review error logs
+
+2. **Email Delivery Issues:**
+   - Verify SMTP configuration
+   - Check email template settings
+   - Monitor delivery logs
+   - Test with different email providers
+
+3. **Database Connection:**
+   - Verify MySQL service status
+   - Check database credentials
+   - Test connection manually
+   - Review server error logs
+
+4. **File Permission Issues:**
+   ```bash
+   # Set correct permissions
+   chmod 755 wp-content/plugins/certificate-generator/
+   chmod 644 wp-content/plugins/certificate-generator/*.php
+   ```
+
+### Environment-Specific Solutions
+
+#### Local Development
+
+1. **Database Connection:**
+   ```php
+   // Add to wp-config.php for testing
+   define('WP_DEBUG', true);
+   define('WP_DEBUG_LOG', true);
+   ```
+
+2. **Server Configuration:**
+   - Start local MySQL service
+   - Verify port configurations
+   - Check localhost accessibility
+
+#### Production Server
+
+1. **Memory Limits:**
+   ```php
+   // Add to wp-config.php
+   ini_set('memory_limit', '256M');
+   ini_set('max_execution_time', 300);
+   ```
+
+2. **Security Settings:**
+   - Verify file permissions
+   - Check server firewall rules
+   - Monitor error logs
 
 ## Changelog
 
@@ -198,33 +315,14 @@ For detailed integration examples and AI agent workflows, see the `API-INTEGRATI
 *   **Improved Student Bulk Download:** ZIP download for students with multiple certificates from the `[student_search]` shortcode.
 *   **Enhanced Error Handling:** More detailed and user-friendly error messages on the frontend, including a support information section.
 *   **Duplicate Prevention Logic:** Strengthened duplicate certificate prevention in search functionalities.
-*   **Secure Filename Generation:** Improved uniqueness and security for generated PDF and ZIP filenames.
+*   **Secure Filename Generation:** Enhanced security for generated files.
 *   **Code Refinements:** General code cleanup, performance improvements, and alignment of features between student and school search functionalities.
-*   Updated `readme.md` with detailed feature explanations, new screenshots (placeholders added), and references to key code files.
 
-### 3.3.0
-*   Added activation, deactivation, and uninstall hooks.
-*   Introduced database table creation for certificate data.
-*   Added support for plugin versioning and update checks.
-*   Enhanced file structure for better maintainability.
-*   Added new field alignment options (left, right, center).
-*   Implemented debug preview mode for precise field positioning.
+## Support
 
-## Upgrade Notice
+If you continue to experience issues:
 
-### 3.3.1
-*   **Email System Enhancements:**
-    * Added comprehensive email delivery system
-    * Integrated WP Mail SMTP support
-    * Added email diagnostic tools
-    * Improved email template management
-*   **Major UI Overhaul**
-*   **Admin Settings Enhancements**
-*   **Bulk Certificate Download for Schools**
-*   **Improved Student Bulk Download**
-*   **Enhanced Error Handling**
-*   **Duplicate Prevention Logic**
-*   **Secure Filename Generation**
-*   **Code Refinements**
-
-[Previous changelog entries remain unchanged...]
+1. Run the built-in diagnostics tool
+2. Check WordPress debug logs
+3. Review server error logs
+4. Contact support with diagnostic output

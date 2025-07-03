@@ -63,6 +63,9 @@ function custom_search_query($query) {
         return;
     }
 
+    if (!function_exists('get_current_screen')) {
+        return;
+    }
     $screen = get_current_screen();
     if (!$screen || !in_array($screen->post_type, ['students', 'teachers', 'schools'])) {
         return;
@@ -295,7 +298,7 @@ function certificate_generator_send_single_email_ajax() {
     }
     
     // Now send the email
-    $success = certificate_generator_send_email($post_id);
+    $success = certificate_generator_send_email($post_id, 'Certificate Email');
     
     if ($success) {
         wp_send_json_success(array('message' => __('Email sent successfully!', 'certificate-generator')));
@@ -386,6 +389,7 @@ function certificate_generator_admin_footer_js() {
             $.ajax({
                 url: ajaxurl,
                 type: 'POST',
+                dataType: 'json', // Explicitly tell jQuery to expect JSON
                 data: {
                     action: 'certificate_generator_send_single_email',
                     post_id: postId,
@@ -398,8 +402,9 @@ function certificate_generator_admin_footer_js() {
                     } else {
                         // Create a container for the error message
                         var errorContainer = $('<div style="color: red; margin-left: 8px; max-width: 500px;"></div>');
-                        // Set the HTML content safely
-                        errorContainer.html(response.data.message);
+                        // Use .text() to prevent HTML parsing issues if the message contains unexpected HTML
+                        // or if the message is intended to be plain text.
+                        errorContainer.text(response.data.message);
                         // Clear and append to the status span
                         statusSpan.empty().append(errorContainer);
                     }
@@ -412,9 +417,15 @@ function certificate_generator_admin_footer_js() {
                 error: function(jqXHR, textStatus, errorThrown) {
                     button.prop('disabled', false);
                     var errorMessage = '<?php echo esc_js(__('An error occurred. Please try again.', 'certificate-generator')); ?>';
-                    if (jqXHR.status) {
+                    if (textStatus === 'parsererror') {
+                        errorMessage = '<?php echo esc_js(__('Server returned an invalid response. Please check server logs for errors.', 'certificate-generator')); ?>';
+                        if (jqXHR.responseText) {
+                            errorMessage += '\nRaw Response: ' + jqXHR.responseText.substring(0, 200); // Show part of the raw response
+                        }
+                    } else if (jqXHR.status) {
                         errorMessage += ' (' + jqXHR.status + ' ' + errorThrown + ')';
                     }
+                    
                     statusSpan.html('<span style="color: red; margin-left: 8px;">' + errorMessage + '</span>');
                     
                     // Clear status message after 5 seconds

@@ -13,37 +13,150 @@ if (!defined('ABSPATH')) {
  * Create email log table on plugin activation
  */
 function certificate_generator_create_email_log_table() {
+    static $table_created = false;
+    
+    // Only run once per request
+    if ($table_created) {
+        error_log('Certificate Generator: Email log table creation already attempted in this request');
+        return;
+    }
+    
+    $table_created = true;
     global $wpdb;
     
-    $table_name = $wpdb->prefix . 'cert_email_logs';
-    
-    $charset_collate = $wpdb->get_charset_collate();
-    
-    $sql = "CREATE TABLE IF NOT EXISTS $table_name (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        cert_id INT NOT NULL,
-        post_type VARCHAR(50) NOT NULL,
-        recipient_email VARCHAR(255) NOT NULL,
-        recipient_name VARCHAR(255),
-        certificate_type VARCHAR(255),
-        email_subject VARCHAR(500),
-        status ENUM('sent', 'failed') DEFAULT 'sent',
-        error_message TEXT,
-        sent_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        INDEX idx_cert_id (cert_id),
-        INDEX idx_post_type (post_type),
-        INDEX idx_recipient_email (recipient_email),
-        INDEX idx_sent_at (sent_at)
-    ) $charset_collate;";
-    
-    require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
-    dbDelta($sql);
+    // Enhanced error handling for production environments
+    try {
+        if (!$wpdb || !is_object($wpdb)) {
+            throw new Exception('WordPress database object not available');
+        }
+
+        $table_name = $wpdb->prefix . 'cert_email_logs';
+        
+        // Check if table already exists
+        $table_exists = $wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s", $table_name));
+        
+        if ($table_exists == $table_name) {
+            error_log('Certificate Generator: Email log table already exists');
+            
+            // Check if post_type column exists and add it if it doesn't
+            $post_type_exists = $wpdb->query("SHOW COLUMNS FROM `$table_name` LIKE 'post_type'");
+            if (!$post_type_exists) {
+                $wpdb->query("ALTER TABLE `$table_name` ADD COLUMN `post_type` varchar(50) NOT NULL AFTER `certificate_id`");
+                error_log('Certificate Generator: Added post_type column to email log table.');
+            }
+            
+            // Check if cert_id column exists and rename it to certificate_id
+            $column_exists = $wpdb->query("SHOW COLUMNS FROM `$table_name` LIKE 'cert_id'");
+            if ($column_exists) {
+                $wpdb->query("ALTER TABLE `$table_name` CHANGE `cert_id` `certificate_id` mediumint(9) NOT NULL");
+                error_log('Certificate Generator: Renamed cert_id to certificate_id in email log table.');
+            }
+            
+            return;
+        }
+
+        $charset_collate = $wpdb->get_charset_collate();
+        $sql = "CREATE TABLE IF NOT EXISTS $table_name (
+            id mediumint(9) NOT NULL AUTO_INCREMENT,
+            recipient_email varchar(255) NOT NULL,
+            recipient_name varchar(255) NOT NULL,
+            certificate_id mediumint(9) NOT NULL,
+            post_type varchar(50) NOT NULL,
+            certificate_type varchar(255) NOT NULL,
+            email_subject varchar(500) NOT NULL,
+            email_body text NOT NULL,
+            attachment_path varchar(500) DEFAULT '',
+            sent_at datetime DEFAULT CURRENT_TIMESTAMP NOT NULL,
+            status varchar(20) DEFAULT 'pending' NOT NULL,
+            error_message text DEFAULT '',
+            PRIMARY KEY  (id),
+            KEY recipient_email (recipient_email),
+            KEY certificate_id (certificate_id),
+            KEY sent_at (sent_at),
+            KEY status (status)
+        ) $charset_collate;";
+
+        // Enhanced upgrade.php detection for various hosting environments
+        $upgrade_loaded = false;
+        $possible_paths = [
+            ABSPATH . 'wp-admin/includes/upgrade.php',
+            dirname(ABSPATH) . '/wp-admin/includes/upgrade.php',
+            WP_CONTENT_DIR . '/../wp-admin/includes/upgrade.php',
+            $_SERVER['DOCUMENT_ROOT'] . '/wp-admin/includes/upgrade.php',
+            dirname($_SERVER['SCRIPT_FILENAME']) . '/wp-admin/includes/upgrade.php'
+        ];
+        
+        foreach ($possible_paths as $path) {
+            if (file_exists($path) && is_readable($path)) {
+                try {
+                    require_once($path);
+                    $upgrade_loaded = true;
+                    break;
+                } catch (Exception $e) {
+                    error_log("Certificate Generator: Failed to load upgrade.php from $path for email log table - " . $e->getMessage());
+                    continue;
+                }
+            }
+        }
+        
+        // Create table using the best available method
+        if ($upgrade_loaded && function_exists('dbDelta')) {
+            $result = dbDelta($sql);
+            error_log('Certificate Generator: Email log table created using dbDelta');
+        } else {
+            // Fallback to direct SQL
+            $result = $wpdb->query($sql);
+            if ($result === false) {
+                throw new Exception('Failed to create email log table: ' . $wpdb->last_error);
+            }
+            error_log('Certificate Generator: Email log table created using direct SQL');
+        }
+        
+    } catch (Exception $e) {
+        error_log("Certificate Generator: Error during email log table creation - " . $e->getMessage());
+        
+        // Final fallback attempt
+        try {
+            global $wpdb;
+            if ($wpdb && is_object($wpdb)) {
+                $table_name = $wpdb->prefix . 'cert_email_logs';
+                $wpdb->query("CREATE TABLE IF NOT EXISTS $table_name (
+                    id mediumint(9) NOT NULL AUTO_INCREMENT,
+                    recipient_email varchar(255) NOT NULL,
+                    recipient_name varchar(255) NOT NULL,
+                    certificate_id mediumint(9) NOT NULL,
+                    post_type varchar(50) NOT NULL,
+                    certificate_type varchar(255) NOT NULL,
+                    email_subject varchar(500) NOT NULL,
+                    email_body text NOT NULL,
+                    attachment_path varchar(500) DEFAULT '',
+                    sent_at datetime DEFAULT CURRENT_TIMESTAMP NOT NULL,
+                    status varchar(20) DEFAULT 'pending' NOT NULL,
+                    error_message text DEFAULT '',
+                    PRIMARY KEY  (id),
+                    KEY recipient_email (recipient_email),
+                    KEY certificate_id (certificate_id),
+                    KEY sent_at (sent_at),
+                    KEY status (status)
+                )");
+                
+                // Check if post_type column exists and add it if it doesn't
+                $post_type_exists = $wpdb->query("SHOW COLUMNS FROM `$table_name` LIKE 'post_type'");
+                if (!$post_type_exists) {
+                    $wpdb->query("ALTER TABLE `$table_name` ADD COLUMN `post_type` varchar(50) NOT NULL AFTER `certificate_id`");
+                    error_log('Certificate Generator: Added post_type column to email log table in fallback.');
+                }
+            }
+        } catch (Exception $fallback_error) {
+            error_log('Certificate Generator: Fallback email log table creation also failed - ' . $fallback_error->getMessage());
+        }
+    }
 }
 
 /**
  * Log email send attempt
  *
- * @param int $cert_id Certificate post ID
+ * @param int $certificate_id Certificate post ID
  * @param string $recipient_email Recipient email address
  * @param string $recipient_name Recipient name
  * @param string $certificate_type Certificate type
@@ -52,14 +165,17 @@ function certificate_generator_create_email_log_table() {
  * @param string $error_message Error message if failed
  * @return int|false Log entry ID on success, false on failure
  */
-function certificate_generator_log_email($cert_id, $recipient_email, $recipient_name = '', $certificate_type = '', $email_subject = '', $success = true, $error_message = '') {
+function certificate_generator_log_email($certificate_id, $recipient_email, $recipient_name = '', $certificate_type = '', $email_subject = '', $success = true, $error_message = '') {
     global $wpdb;
     
+    // Ensure the table exists and has the correct structure
+    certificate_generator_create_email_log_table();
+    
     $table_name = $wpdb->prefix . 'cert_email_logs';
-    $post_type = get_post_type($cert_id);
+    $post_type = get_post_type($certificate_id);
     
     $data = [
-        'cert_id' => $cert_id,
+        'certificate_id' => $certificate_id,
         'post_type' => $post_type,
         'recipient_email' => $recipient_email,
         'recipient_name' => $recipient_name,
@@ -95,7 +211,7 @@ function certificate_generator_get_email_logs($args = []) {
         'date_to' => '',
         'orderby' => 'sent_at',
         'order' => 'DESC',
-        'cert_id' => 0 // Add cert_id parameter for filtering by certificate
+        'certificate_id' => 0 // Add certificate_id parameter for filtering by certificate
     ];
     
     $args = wp_parse_args($args, $defaults);
@@ -110,9 +226,9 @@ function certificate_generator_get_email_logs($args = []) {
     }
     
     // Filter by certificate ID
-    if (!empty($args['cert_id'])) {
-        $where_conditions[] = 'cert_id = %d';
-        $where_values[] = $args['cert_id'];
+    if (!empty($args['certificate_id'])) {
+        $where_conditions[] = 'certificate_id = %d';
+        $where_values[] = $args['certificate_id'];
     }
     
     // Filter by status
@@ -216,16 +332,16 @@ function certificate_generator_get_email_stats() {
  * @param string $email Recipient email
  * @return bool Whether email was already sent
  */
-function certificate_generator_email_already_sent($cert_id, $email) {
+function certificate_generator_email_already_sent($certificate_id, $email) {
     global $wpdb;
     
     $table_name = $wpdb->prefix . 'cert_email_logs';
     
-    $count = $wpdb->get_var($wpdb->prepare(
-        "SELECT COUNT(*) FROM $table_name WHERE cert_id = %d AND recipient_email = %s AND status = 'sent'",
-        $cert_id,
+    $query = $wpdb->prepare(
+        "SELECT COUNT(*) FROM $table_name WHERE certificate_id = %d AND recipient_email = %s AND status = 'sent'",
+        $certificate_id,
         $email
-    ));
+    );
     
     return $count > 0;
 }

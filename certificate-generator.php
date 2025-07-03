@@ -11,11 +11,15 @@ if (!defined('ABSPATH')) {
     exit; // Exit if accessed directly
 }
 
-
-
 // Define constants for plugin paths
 define('CERTIFICATE_GENERATOR_PATH', plugin_dir_path(__FILE__));
 define('CERTIFICATE_GENERATOR_URL', plugin_dir_url(__FILE__));
+
+// Include debug configuration
+require_once CERTIFICATE_GENERATOR_PATH . 'debug-config.php';
+
+// Initialize debug configuration early
+certificate_generator_init_config();
 
 
 // Enqueue CSS and JS for Admin UI
@@ -53,7 +57,11 @@ $required_files = [
     'includes/api-endpoints.php',           // API endpoints for AI integration
     'includes/email-functions.php',         // Email functionality
     'includes/email-log.php',              // Email logging functionality
-    'includes/admin-email-logs.php'        // Admin interface for email logs
+    'includes/admin-email-logs.php',        // Admin interface for email logs
+    'hostinger-debug.php',                  // Hostinger-specific debug tools
+    'hostinger-safe-activation.php',        // Hostinger-specific safe activation
+    'enhanced-activation.php',              // Enhanced activation system for all environments
+    'activation-diagnostic.php'             // Activation diagnostic tools
 ];
 
 // Only load debug tools in development environments
@@ -70,57 +78,43 @@ foreach ($required_files as $file) {
     }
 }
 
-// Plugin activation hook
+// Plugin activation hook - now uses enhanced activation system
 function certificate_generator_activate() {
-    register_custom_post_types(); // Register the custom post type
-    flush_rewrite_rules(); // Flush rewrite rules for permalinks
-
-    // Create default database table (if needed)
-    global $wpdb;
-    $table_name = $wpdb->prefix . 'certificate_generator';
-
-    if ($wpdb->get_var("SHOW TABLES LIKE '$table_name'") != $table_name) {
-        $charset_collate = $wpdb->get_charset_collate();
-        $sql = "CREATE TABLE $table_name (
-            id mediumint(9) NOT NULL AUTO_INCREMENT,
-            student_name varchar(255) NOT NULL,
-            certificate_data text NOT NULL,
-            created_at datetime DEFAULT CURRENT_TIMESTAMP NOT NULL,
-            PRIMARY KEY  (id)
-        ) $charset_collate;";
-
-        // Create email logs table
-        require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
-        certificate_generator_create_email_log_table();
-
-        require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
-        dbDelta($sql);
-    }
-
-    // Create email log table
-    if (function_exists('certificate_generator_create_email_log_table')) {
-        certificate_generator_create_email_log_table();
-    }
-
-    // Set default email options
-    $default_options = [
-        'auto_send_enabled' => false,
-        'email_logo' => '',
-        'email_subject' => 'Your Certificate is Ready',
-        'email_message' => 'Dear {name},\n\nYour certificate is ready for download. Please find it attached to this email.\n\nBest regards,\nThe Certificate Team'
-    ];
-    
-    foreach ($default_options as $key => $value) {
-        if (get_option('certificate_generator_' . $key) === false) {
-            add_option('certificate_generator_' . $key, $value);
+    // Use the enhanced activation system that detects environment
+    if (function_exists('certificate_generator_smart_activate')) {
+        return certificate_generator_smart_activate();
+    } else {
+        // Fallback to Hostinger safe activation if enhanced system not loaded
+        if (function_exists('certificate_generator_hostinger_safe_activate')) {
+            return certificate_generator_hostinger_safe_activate();
+        } else {
+            error_log('Certificate Generator: No activation function available');
+            
+            // Last resort - try to create minimal setup
+            try {
+                global $wpdb;
+                if ($wpdb && is_object($wpdb)) {
+                    $table_name = $wpdb->prefix . 'certificate_generator';
+                    $wpdb->query("CREATE TABLE IF NOT EXISTS $table_name (
+                        id mediumint(9) NOT NULL AUTO_INCREMENT,
+                        student_name varchar(255) NOT NULL,
+                        certificate_data text NOT NULL,
+                        created_at datetime DEFAULT CURRENT_TIMESTAMP NOT NULL,
+                        PRIMARY KEY  (id)
+                    )");
+                    error_log('Certificate Generator: Minimal setup completed');
+                    return true;
+                }
+            } catch (Exception $fallback_error) {
+                error_log('Certificate Generator: All activation methods failed - ' . $fallback_error->getMessage());
+            }
+            
+            return false;
         }
     }
-
-    // Schedule cleanup cron job
-    if (!wp_next_scheduled('certificate_generator_cleanup_logs')) {
-        wp_schedule_event(time(), 'weekly', 'certificate_generator_cleanup_logs');
-    }
 }
+
+// Register the activation hook
 register_activation_hook(__FILE__, 'certificate_generator_activate');
 
 // Plugin deactivation hook

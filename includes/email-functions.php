@@ -74,13 +74,28 @@ function certificate_generator_send_email($post_id, $log_email = true) {
     $fields = [];
     switch ($post_type) {
         case 'students':
-            $fields = ['student_name', 'school_name', 'issue_date'];
+            $fields = [];
+            if (get_post_meta($post_id, 'field_1_visible', true) !== '0') {
+                $fields[] = 'student_name';
+            }
+            if (get_post_meta($post_id, 'field_2_visible', true) !== '0') {
+                $fields[] = 'school_name';
+            }
+            if (get_post_meta($post_id, 'field_3_visible', true) !== '0') {
+                $fields[] = 'issue_date';
+            }
             break;
         case 'teachers':
-            $fields = ['teacher_name', 'school_name', 'issue_date'];
+            $fields = ['teacher_name', 'school_name'];
+            if (get_post_meta($post_id, 'field_3_visible', true) !== '0') {
+                $fields[] = 'issue_date';
+            }
             break;
         case 'schools':
-            $fields = ['school_name', 'issue_date'];
+            $fields = ['school_name'];
+            if (get_post_meta($post_id, 'field_3_visible', true) !== '0') {
+                $fields[] = 'issue_date';
+            }
             break;
     }
     
@@ -222,36 +237,53 @@ function certificate_generator_send_email($post_id, $log_email = true) {
  *
  * @param string $post_type The post type (students, teachers, or schools)
  * @param bool $skip_already_sent Whether to skip certificates that were already emailed
+ * @param array $specific_post_ids Optional array of specific post IDs to process
  * @return array Array with counts of success and failure
  */
-function certificate_generator_send_bulk_emails($post_type, $skip_already_sent = true) {
+function certificate_generator_send_bulk_emails($post_type, $skip_already_sent = true, $specific_post_ids = []) {
     // Check if post type is supported
     if (!in_array($post_type, ['students', 'teachers', 'schools'])) {
-        return ['success' => 0, 'failure' => 0, 'skipped' => 0];
+        return ['success' => 0, 'failure' => 0, 'skipped' => 0, 'errors' => []];
     }
     
-    // Query all posts of the specified type
+    // Query posts - either specific IDs or all posts of the type
     $args = [
         'post_type' => $post_type,
         'posts_per_page' => -1,
         'post_status' => 'publish',
     ];
     
+    // If specific post IDs are provided, use them
+    if (!empty($specific_post_ids)) {
+        $args['post__in'] = array_map('intval', $specific_post_ids);
+    }
+    
     $query = new WP_Query($args);
-    $results = ['success' => 0, 'failure' => 0, 'skipped' => 0];
+    $results = ['success' => 0, 'failure' => 0, 'skipped' => 0, 'errors' => [], 'total' => 0];
     
     if ($query->have_posts()) {
+        $results['total'] = $query->found_posts;
+        
         while ($query->have_posts()) {
             $query->the_post();
             $post_id = get_the_ID();
             
+            // Get post title for error reporting
+            $post_title = get_the_title($post_id);
+            
+            // Check if post has email address
+            $email = get_post_meta($post_id, 'email', true);
+            if (empty($email)) {
+                $results['skipped']++;
+                $results['errors'][] = sprintf(__('Skipped %s: No email address', 'certificate-generator'), $post_title);
+                continue;
+            }
+            
             // Check if email was already sent and skip if requested
-            if ($skip_already_sent) {
-                $email = get_post_meta($post_id, 'email', true);
-                if (!empty($email) && certificate_generator_email_already_sent($post_id, $email)) {
-                    $results['skipped']++;
-                    continue;
-                }
+            if ($skip_already_sent && certificate_generator_email_already_sent($post_id, $email)) {
+                $results['skipped']++;
+                $results['errors'][] = sprintf(__('Skipped %s: Email already sent', 'certificate-generator'), $post_title);
+                continue;
             }
             
             // Send email for this post
@@ -261,12 +293,44 @@ function certificate_generator_send_bulk_emails($post_type, $skip_already_sent =
                 $results['success']++;
             } else {
                 $results['failure']++;
+                $results['errors'][] = sprintf(__('Failed to send email to %s (%s)', 'certificate-generator'), $post_title, $email);
             }
         }
         wp_reset_postdata();
     }
     
     return $results;
+}
+
+/**
+ * Check if email was already sent for a specific post
+ *
+ * @param int $post_id The post ID
+ * @param string $email The email address
+ * @return bool Whether email was already sent
+ */
+function certificate_generator_email_already_sent($post_id, $email) {
+    global $wpdb;
+    
+    // Check if email log table exists (assuming it's created elsewhere)
+    $table_name = $wpdb->prefix . 'cert_email_logs';
+    
+    // Check if table exists
+    if ($wpdb->get_var("SHOW TABLES LIKE '$table_name'") != $table_name) {
+        return false; // Table doesn't exist, so email hasn't been sent
+    }
+    
+    // Query the email logs to see if this email was already sent successfully
+    $result = $wpdb->get_var($wpdb->prepare(
+        "SELECT COUNT(*) FROM $table_name 
+         WHERE certificate_id = %d 
+         AND recipient_email = %s 
+         AND status = 'sent'",
+        $post_id,
+        $email
+    ));
+    
+    return $result > 0;
 }
 
 /**

@@ -9,6 +9,7 @@ function add_custom_columns($columns) {
         if ($key === 'title') {
             $new_columns[$key] = $value;
             $new_columns['email'] = __('Email', 'certificate-generator');
+            $new_columns['email_status'] = __('Email Status', 'certificate-generator');
             $new_columns['school_name'] = __('School Name', 'certificate-generator');
             $new_columns['certificate_type'] = __('Certificate Type', 'certificate-generator');
             $new_columns['issue_date'] = __('Issue Date', 'certificate-generator');
@@ -25,6 +26,22 @@ function populate_custom_columns($column, $post_id) {
         case 'email':
             $email = get_post_meta($post_id, 'email', true);
             echo $email ? esc_html($email) : '—';
+            break;
+        case 'email_status':
+            $email = get_post_meta($post_id, 'email', true);
+            if (!empty($email)) {
+                $email_sent = certificate_generator_email_already_sent($post_id, $email);
+                if ($email_sent) {
+                    echo '<span class="dashicons dashicons-yes-alt" style="color: #46b450;" title="' . esc_attr__('Email sent successfully', 'certificate-generator') . '"></span> ';
+                    echo '<span style="color: #46b450;">' . __('Sent', 'certificate-generator') . '</span>';
+                } else {
+                    echo '<span class="dashicons dashicons-email-alt" style="color: #ffba00;" title="' . esc_attr__('Email not sent yet', 'certificate-generator') . '"></span> ';
+                    echo '<span style="color: #ffba00;">' . __('Pending', 'certificate-generator') . '</span>';
+                }
+            } else {
+                echo '<span class="dashicons dashicons-warning" style="color: #d63638;" title="' . esc_attr__('No email address available', 'certificate-generator') . '"></span> ';
+                echo '<span style="color: #d63638;">' . __('No Email', 'certificate-generator') . '</span>';
+            }
             break;
         case 'school_name':
             $school = get_post_meta($post_id, 'school_name', true);
@@ -246,6 +263,12 @@ function certificate_generator_send_single_email_ajax() {
     
     // First check if we have enough field positions defined in the template
     for ($i = 1; $i <= $field_count; $i++) {
+        // Skip checking if field is not visible
+        $is_visible = get_post_meta($template_id, "field_{$i}_visible", true);
+        if ($is_visible === '0') {
+            continue;
+        }
+        
         $position_x = get_post_meta($template_id, "field_{$i}_position_x", true);
         $position_y = get_post_meta($template_id, "field_{$i}_position_y", true);
         
@@ -378,6 +401,7 @@ function certificate_generator_admin_footer_js() {
     ?>
     <script type="text/javascript">
     jQuery(document).ready(function($) {
+        // Individual email sending functionality
         $('.send-certificate-email').on('click', function() {
             var button = $(this);
             var postId = button.data('post-id');
@@ -389,7 +413,7 @@ function certificate_generator_admin_footer_js() {
             $.ajax({
                 url: ajaxurl,
                 type: 'POST',
-                dataType: 'json', // Explicitly tell jQuery to expect JSON
+                dataType: 'json',
                 data: {
                     action: 'certificate_generator_send_single_email',
                     post_id: postId,
@@ -400,16 +424,11 @@ function certificate_generator_admin_footer_js() {
                     if (response.success) {
                         statusSpan.html('<div style="color: green; margin-left: 8px;">' + response.data.message + '</div>');
                     } else {
-                        // Create a container for the error message
                         var errorContainer = $('<div style="color: red; margin-left: 8px; max-width: 500px;"></div>');
-                        // Use .text() to prevent HTML parsing issues if the message contains unexpected HTML
-                        // or if the message is intended to be plain text.
                         errorContainer.text(response.data.message);
-                        // Clear and append to the status span
                         statusSpan.empty().append(errorContainer);
                     }
                     
-                    // Clear status message after 5 seconds
                     setTimeout(function() {
                         statusSpan.html('');
                     }, 5000);
@@ -420,7 +439,7 @@ function certificate_generator_admin_footer_js() {
                     if (textStatus === 'parsererror') {
                         errorMessage = '<?php echo esc_js(__('Server returned an invalid response. Please check server logs for errors.', 'certificate-generator')); ?>';
                         if (jqXHR.responseText) {
-                            errorMessage += '\nRaw Response: ' + jqXHR.responseText.substring(0, 200); // Show part of the raw response
+                            errorMessage += '\nRaw Response: ' + jqXHR.responseText.substring(0, 200);
                         }
                     } else if (jqXHR.status) {
                         errorMessage += ' (' + jqXHR.status + ' ' + errorThrown + ')';
@@ -428,13 +447,176 @@ function certificate_generator_admin_footer_js() {
                     
                     statusSpan.html('<span style="color: red; margin-left: 8px;">' + errorMessage + '</span>');
                     
-                    // Clear status message after 5 seconds
                     setTimeout(function() {
                         statusSpan.html('');
                     }, 5000);
                 }
             });
         });
+
+        // Bulk email functionality
+        var bulkEmailModal = $('#bulk-email-modal');
+        var selectedPostIds = [];
+        var currentPostType = '<?php echo get_current_screen()->post_type; ?>';
+
+        // Intercept bulk action form submission
+        $('#posts-filter').on('submit', function(e) {
+            var bulkAction = $('#bulk-action-selector-top').val() || $('#bulk-action-selector-bottom').val();
+            
+            if (bulkAction === 'send_bulk_emails') {
+                e.preventDefault();
+                
+                // Get selected post IDs
+                selectedPostIds = [];
+                $('input[name="post[]"]:checked').each(function() {
+                    selectedPostIds.push($(this).val());
+                });
+                
+                if (selectedPostIds.length === 0) {
+                    alert('<?php echo esc_js(__('Please select at least one item.', 'certificate-generator')); ?>');
+                    return false;
+                }
+                
+                // Show modal
+                bulkEmailModal.show();
+                resetModal();
+            }
+        });
+
+        // Modal functionality
+        function resetModal() {
+            $('.bulk-email-progress').hide();
+            $('.bulk-email-results').hide();
+            $('#bulk-email-confirm').prop('disabled', false).show();
+            $('#bulk-email-cancel').text('<?php echo esc_js(__('Cancel', 'certificate-generator')); ?>');
+            $('.progress-fill').css('width', '0%');
+            $('.progress-text').text('<?php echo esc_js(__('Processing...', 'certificate-generator')); ?>');
+        }
+
+        // Close modal
+        $('.bulk-email-modal-close, #bulk-email-cancel').on('click', function() {
+            bulkEmailModal.hide();
+        });
+
+        // Close modal when clicking outside
+        bulkEmailModal.on('click', function(e) {
+            if (e.target === this) {
+                bulkEmailModal.hide();
+            }
+        });
+
+        // Confirm bulk email sending
+        $('#bulk-email-confirm').on('click', function() {
+            var skipAlreadySent = $('#skip-already-sent').is(':checked');
+            
+            // Show progress
+            $('.bulk-email-progress').show();
+            $('#bulk-email-confirm').prop('disabled', true);
+            
+            // Start progress animation
+            $('.progress-fill').css('width', '10%');
+            $('.progress-text').text('<?php echo esc_js(__('Initializing...', 'certificate-generator')); ?>');
+            
+            // Send AJAX request
+            $.ajax({
+                url: ajaxurl,
+                type: 'POST',
+                dataType: 'json',
+                data: {
+                    action: 'certificate_generator_bulk_email_progress',
+                    post_ids: selectedPostIds,
+                    post_type: currentPostType,
+                    skip_already_sent: skipAlreadySent,
+                    nonce: '<?php echo wp_create_nonce('certificate_generator_bulk_email'); ?>'
+                },
+                xhr: function() {
+                    var xhr = new window.XMLHttpRequest();
+                    // Simulate progress for better UX
+                    var progressInterval = setInterval(function() {
+                        var currentWidth = parseInt($('.progress-fill').css('width'));
+                        var containerWidth = $('.progress-bar').width();
+                        var currentPercent = (currentWidth / containerWidth) * 100;
+                        
+                        if (currentPercent < 90) {
+                            $('.progress-fill').css('width', (currentPercent + 5) + '%');
+                        }
+                    }, 500);
+                    
+                    xhr.progressInterval = progressInterval;
+                    return xhr;
+                },
+                success: function(response, textStatus, xhr) {
+                    // Clear progress interval
+                    if (xhr.progressInterval) {
+                        clearInterval(xhr.progressInterval);
+                    }
+                    
+                    $('.progress-fill').css('width', '100%');
+                    $('.progress-text').text('<?php echo esc_js(__('Complete!', 'certificate-generator')); ?>');
+                    
+                    if (response.success) {
+                        showResults(response.data.message, response.data.results);
+                    } else {
+                        showResults(response.data.message, null, 'error');
+                    }
+                },
+                error: function(xhr, textStatus, errorThrown) {
+                    // Clear progress interval
+                    if (xhr.progressInterval) {
+                        clearInterval(xhr.progressInterval);
+                    }
+                    
+                    $('.progress-fill').css('width', '100%');
+                    $('.progress-text').text('<?php echo esc_js(__('Error occurred', 'certificate-generator')); ?>');
+                    
+                    var errorMessage = '<?php echo esc_js(__('An error occurred while sending bulk emails.', 'certificate-generator')); ?>';
+                    if (xhr.status) {
+                        errorMessage += ' (' + xhr.status + ' ' + errorThrown + ')';
+                    }
+                    
+                    showResults(errorMessage, null, 'error');
+                }
+            });
+        });
+
+        function showResults(message, results, type) {
+            var resultsDiv = $('.bulk-email-results');
+            var resultType = 'success';
+            
+            if (type === 'error') {
+                resultType = 'error';
+            } else if (results && results.failure > 0 && results.success === 0) {
+                resultType = 'error';
+            } else if (results && results.failure > 0) {
+                resultType = 'warning';
+            }
+            
+            resultsDiv.removeClass('success warning error').addClass(resultType);
+            resultsDiv.html('<strong>' + message + '</strong>');
+            
+            if (results && results.errors && results.errors.length > 0) {
+                var errorList = '<ul style="margin-top: 10px; margin-bottom: 0;">';
+                results.errors.slice(0, 10).forEach(function(error) { // Show only first 10 errors
+                    errorList += '<li>' + error + '</li>';
+                });
+                if (results.errors.length > 10) {
+                    errorList += '<li><em>... and ' + (results.errors.length - 10) + ' more errors</em></li>';
+                }
+                errorList += '</ul>';
+                resultsDiv.append(errorList);
+            }
+            
+            resultsDiv.show();
+            $('#bulk-email-confirm').hide();
+            $('#bulk-email-cancel').text('<?php echo esc_js(__('Close', 'certificate-generator')); ?>');
+            
+            // Auto-reload page after 3 seconds for successful operations
+            if (resultType === 'success' || resultType === 'warning') {
+                setTimeout(function() {
+                    window.location.reload();
+                }, 3000);
+            }
+        }
     });
     </script>
     <?php
@@ -457,3 +639,292 @@ add_filter('manage_edit-schools_sortable_columns', 'make_custom_columns_sortable
 
 // Add search and sort functionality
 add_action('pre_get_posts', 'custom_search_query');
+
+// Add bulk actions for sending emails
+function certificate_generator_add_bulk_actions($bulk_actions) {
+    $bulk_actions['send_bulk_emails'] = __('Send Bulk Emails', 'certificate-generator');
+    return $bulk_actions;
+}
+
+// Handle bulk actions
+function certificate_generator_handle_bulk_actions($redirect_to, $action, $post_ids) {
+    if ($action !== 'send_bulk_emails') {
+        return $redirect_to;
+    }
+    
+    if (empty($post_ids)) {
+        return $redirect_to;
+    }
+    
+    // Get the post type from the current screen
+    $screen = get_current_screen();
+    $post_type = $screen->post_type;
+    
+    // Validate post type
+    if (!in_array($post_type, ['students', 'teachers', 'schools'])) {
+        $redirect_to = add_query_arg('bulk_email_error', 'invalid_post_type', $redirect_to);
+        return $redirect_to;
+    }
+    
+    // Process bulk emails
+    $results = certificate_generator_send_bulk_emails($post_type, true, $post_ids);
+    
+    // Add results to redirect URL
+    $redirect_to = add_query_arg([
+        'bulk_emails_sent' => $results['success'],
+        'bulk_emails_failed' => $results['failure'],
+        'bulk_emails_skipped' => $results['skipped'],
+        'bulk_emails_total' => $results['total']
+    ], $redirect_to);
+    
+    return $redirect_to;
+}
+
+// Display bulk action notices
+function certificate_generator_bulk_action_notices() {
+    if (!empty($_REQUEST['bulk_emails_sent']) || !empty($_REQUEST['bulk_emails_failed']) || !empty($_REQUEST['bulk_emails_skipped'])) {
+        $sent = isset($_REQUEST['bulk_emails_sent']) ? intval($_REQUEST['bulk_emails_sent']) : 0;
+        $failed = isset($_REQUEST['bulk_emails_failed']) ? intval($_REQUEST['bulk_emails_failed']) : 0;
+        $skipped = isset($_REQUEST['bulk_emails_skipped']) ? intval($_REQUEST['bulk_emails_skipped']) : 0;
+        $total = isset($_REQUEST['bulk_emails_total']) ? intval($_REQUEST['bulk_emails_total']) : 0;
+        
+        $message = sprintf(
+            __('Bulk email results: %d sent, %d failed, %d skipped out of %d total.', 'certificate-generator'),
+            $sent, $failed, $skipped, $total
+        );
+        
+        $notice_type = 'success';
+        if ($failed > 0 && $sent === 0) {
+            $notice_type = 'error';
+        } elseif ($failed > 0) {
+            $notice_type = 'warning';
+        }
+        
+        echo '<div class="notice notice-' . esc_attr($notice_type) . ' is-dismissible"><p>' . esc_html($message) . '</p></div>';
+    }
+    
+    if (!empty($_REQUEST['bulk_email_error'])) {
+        $error = sanitize_text_field($_REQUEST['bulk_email_error']);
+        $message = __('Bulk email error: Invalid post type.', 'certificate-generator');
+        echo '<div class="notice notice-error is-dismissible"><p>' . esc_html($message) . '</p></div>';
+    }
+}
+
+// Add bulk actions to post types
+add_filter('bulk_actions-edit-students', 'certificate_generator_add_bulk_actions');
+add_filter('bulk_actions-edit-teachers', 'certificate_generator_add_bulk_actions');
+add_filter('bulk_actions-edit-schools', 'certificate_generator_add_bulk_actions');
+
+// Handle bulk actions for post types
+add_filter('handle_bulk_actions-edit-students', 'certificate_generator_handle_bulk_actions', 10, 3);
+add_filter('handle_bulk_actions-edit-teachers', 'certificate_generator_handle_bulk_actions', 10, 3);
+add_filter('handle_bulk_actions-edit-schools', 'certificate_generator_handle_bulk_actions', 10, 3);
+
+// Add admin notices
+add_action('admin_notices', 'certificate_generator_bulk_action_notices');
+
+// AJAX handler for bulk email progress
+add_action('wp_ajax_certificate_generator_bulk_email_progress', 'certificate_generator_bulk_email_progress_ajax');
+function certificate_generator_bulk_email_progress_ajax() {
+    // Check nonce for security
+    check_ajax_referer('certificate_generator_bulk_email', 'nonce');
+    
+    // Check if user has permission
+    if (!current_user_can('edit_posts')) {
+        wp_send_json_error(array('message' => __('You do not have permission to perform this action.', 'certificate-generator')));
+        wp_die();
+    }
+    
+    // Get parameters from request
+    $post_ids = isset($_POST['post_ids']) ? array_map('intval', $_POST['post_ids']) : [];
+    $post_type = isset($_POST['post_type']) ? sanitize_text_field($_POST['post_type']) : '';
+    $skip_already_sent = isset($_POST['skip_already_sent']) ? (bool)$_POST['skip_already_sent'] : true;
+    
+    if (empty($post_ids) || empty($post_type)) {
+        wp_send_json_error(array('message' => __('Invalid parameters.', 'certificate-generator')));
+        wp_die();
+    }
+    
+    // Validate post type
+    if (!in_array($post_type, ['students', 'teachers', 'schools'])) {
+        wp_send_json_error(array('message' => __('Invalid post type.', 'certificate-generator')));
+        wp_die();
+    }
+    
+    // Process bulk emails
+    $results = certificate_generator_send_bulk_emails($post_type, $skip_already_sent, $post_ids);
+    
+    // Return results
+    wp_send_json_success([
+        'message' => sprintf(
+            __('Bulk email completed: %d sent, %d failed, %d skipped out of %d total.', 'certificate-generator'),
+            $results['success'], $results['failure'], $results['skipped'], $results['total']
+        ),
+        'results' => $results
+    ]);
+    
+    wp_die();
+}
+
+// Add enhanced bulk email modal and JavaScript
+add_action('admin_footer', 'certificate_generator_bulk_email_modal');
+function certificate_generator_bulk_email_modal() {
+    $screen = get_current_screen();
+    if (!$screen || !in_array($screen->post_type, ['students', 'teachers', 'schools'])) {
+        return;
+    }
+    ?>
+    <!-- Bulk Email Modal -->
+    <div id="bulk-email-modal" style="display: none;">
+        <div class="bulk-email-modal-content">
+            <div class="bulk-email-modal-header">
+                <h3><?php _e('Send Bulk Emails', 'certificate-generator'); ?></h3>
+                <span class="bulk-email-modal-close">&times;</span>
+            </div>
+            <div class="bulk-email-modal-body">
+                <p><?php _e('Send certificate emails to selected entries?', 'certificate-generator'); ?></p>
+                <div class="bulk-email-options">
+                    <label>
+                        <input type="checkbox" id="skip-already-sent" checked>
+                        <?php _e('Skip entries that have already been emailed', 'certificate-generator'); ?>
+                    </label>
+                </div>
+                <div class="bulk-email-progress" style="display: none;">
+                    <div class="progress-bar">
+                        <div class="progress-fill"></div>
+                    </div>
+                    <div class="progress-text"><?php _e('Processing...', 'certificate-generator'); ?></div>
+                </div>
+                <div class="bulk-email-results" style="display: none;"></div>
+            </div>
+            <div class="bulk-email-modal-footer">
+                <button type="button" class="button button-secondary" id="bulk-email-cancel"><?php _e('Cancel', 'certificate-generator'); ?></button>
+                <button type="button" class="button button-primary" id="bulk-email-confirm"><?php _e('Send Emails', 'certificate-generator'); ?></button>
+            </div>
+        </div>
+    </div>
+
+    <style>
+    #bulk-email-modal {
+        position: fixed;
+        z-index: 999999;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0,0,0,0.5);
+    }
+    
+    .bulk-email-modal-content {
+        background-color: #fefefe;
+        margin: 10% auto;
+        padding: 0;
+        border: 1px solid #888;
+        width: 500px;
+        max-width: 90%;
+        border-radius: 4px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+    
+    .bulk-email-modal-header {
+        background: #f1f1f1;
+        padding: 15px 20px;
+        border-bottom: 1px solid #ddd;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    
+    .bulk-email-modal-header h3 {
+        margin: 0;
+        font-size: 16px;
+    }
+    
+    .bulk-email-modal-close {
+        color: #aaa;
+        font-size: 28px;
+        font-weight: bold;
+        cursor: pointer;
+        line-height: 1;
+    }
+    
+    .bulk-email-modal-close:hover {
+        color: #000;
+    }
+    
+    .bulk-email-modal-body {
+        padding: 20px;
+    }
+    
+    .bulk-email-options {
+        margin: 15px 0;
+    }
+    
+    .bulk-email-options label {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    
+    .bulk-email-progress {
+        margin: 15px 0;
+    }
+    
+    .progress-bar {
+        width: 100%;
+        height: 20px;
+        background-color: #f0f0f0;
+        border-radius: 10px;
+        overflow: hidden;
+        margin-bottom: 10px;
+    }
+    
+    .progress-fill {
+        height: 100%;
+        background-color: #0073aa;
+        width: 0%;
+        transition: width 0.3s ease;
+        border-radius: 10px;
+    }
+    
+    .progress-text {
+        text-align: center;
+        font-size: 14px;
+        color: #666;
+    }
+    
+    .bulk-email-results {
+        margin: 15px 0;
+        padding: 10px;
+        border-radius: 4px;
+    }
+    
+    .bulk-email-results.success {
+        background-color: #d4edda;
+        border: 1px solid #c3e6cb;
+        color: #155724;
+    }
+    
+    .bulk-email-results.warning {
+        background-color: #fff3cd;
+        border: 1px solid #ffeaa7;
+        color: #856404;
+    }
+    
+    .bulk-email-results.error {
+        background-color: #f8d7da;
+        border: 1px solid #f5c6cb;
+        color: #721c24;
+    }
+    
+    .bulk-email-modal-footer {
+        background: #f1f1f1;
+        padding: 15px 20px;
+        border-top: 1px solid #ddd;
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+    }
+    </style>
+    <?php
+}

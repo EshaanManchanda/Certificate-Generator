@@ -19,6 +19,98 @@ function certificate_generator_add_admin_menu() {
 
 // Initialize settings
 add_action('admin_init', 'certificate_generator_settings_init');
+// AJAX handler for saving API key
+add_action('wp_ajax_certificate_generator_save_api_key', 'certificate_generator_save_api_key_ajax');
+// AJAX handler for deleting API key
+add_action('wp_ajax_certificate_generator_delete_api_key', 'certificate_generator_delete_api_key_ajax');
+
+function certificate_generator_save_api_key_ajax() {
+    // Debug logging
+    if (defined('WP_DEBUG') && WP_DEBUG) {
+        error_log('API Key AJAX handler triggered');
+        error_log('POST data: ' . print_r($_POST, true));
+    }
+    
+    // Verify nonce
+    if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'save_api_key_nonce')) {
+        if (defined('WP_DEBUG') && WP_DEBUG) {
+            error_log('API Key AJAX: Invalid nonce');
+        }
+        wp_send_json_error('Invalid nonce');
+    }
+
+    // Verify user capabilities
+    if (!current_user_can('manage_options')) {
+        if (defined('WP_DEBUG') && WP_DEBUG) {
+            error_log('API Key AJAX: Insufficient permissions');
+        }
+        wp_send_json_error('Insufficient permissions');
+    }
+
+    // Get and sanitize the API key
+    $api_key = isset($_POST['api_key']) ? sanitize_text_field($_POST['api_key']) : '';
+    if (empty($api_key)) {
+        if (defined('WP_DEBUG') && WP_DEBUG) {
+            error_log('API Key AJAX: Empty API key');
+        }
+        wp_send_json_error('API key is required');
+    }
+
+    // Save the API key and enable API access
+    $key_updated = update_option('certificate_generator_api_key', $api_key);
+    $access_updated = update_option('certificate_generator_api_key_enabled', true);
+    
+    if (defined('WP_DEBUG') && WP_DEBUG) {
+        error_log('API Key AJAX: Key updated: ' . ($key_updated ? 'true' : 'false'));
+        error_log('API Key AJAX: Access updated: ' . ($access_updated ? 'true' : 'false'));
+    }
+    
+    if ($key_updated && $access_updated) {
+        wp_send_json_success('API key saved and API access enabled successfully');
+    } else {
+        wp_send_json_error('Failed to save API key or enable API access');
+    }
+}
+
+// AJAX handler for deleting API key
+function certificate_generator_delete_api_key_ajax() {
+    // Debug logging
+    if (defined('WP_DEBUG') && WP_DEBUG) {
+        error_log('Delete API Key AJAX handler triggered');
+    }
+    
+    // Verify nonce
+    if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'delete_api_key_nonce')) {
+        if (defined('WP_DEBUG') && WP_DEBUG) {
+            error_log('Delete API Key AJAX: Invalid nonce');
+        }
+        wp_send_json_error('Invalid nonce');
+    }
+
+    // Verify user capabilities
+    if (!current_user_can('manage_options')) {
+        if (defined('WP_DEBUG') && WP_DEBUG) {
+            error_log('Delete API Key AJAX: Insufficient permissions');
+        }
+        wp_send_json_error('Insufficient permissions');
+    }
+
+    // Delete the API key and disable API access
+    $key_deleted = delete_option('certificate_generator_api_key');
+    $access_disabled = update_option('certificate_generator_api_key_enabled', false);
+    
+    if (defined('WP_DEBUG') && WP_DEBUG) {
+        error_log('Delete API Key AJAX: Key deleted: ' . ($key_deleted ? 'true' : 'false'));
+        error_log('Delete API Key AJAX: Access disabled: ' . ($access_disabled ? 'true' : 'false'));
+    }
+    
+    if ($key_deleted || $access_disabled) {
+        wp_send_json_success('API key deleted and API access disabled successfully');
+    } else {
+        wp_send_json_error('Failed to delete API key or disable API access');
+    }
+}
+
 // Initialize settings
 function certificate_generator_settings_init() {
     register_setting('certificate_generator_settings', 'certificate_generator_settings_email', [
@@ -588,7 +680,34 @@ function certificate_generator_clear_cache() {
 
 // Render settings page
 function certificate_generator_settings_page() {
-    // Get and validate current tab
+    // Add CSS for API key styling
+    ?>
+    <style>
+        .api-key-container {
+            background: #f9f9f9;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            margin-bottom: 15px;
+        }
+        #certificate_generator_api_key_display {
+            background: #fff;
+            padding: 8px;
+            font-size: 14px;
+            line-height: 1.4;
+        }
+        .api-key-actions {
+            margin-top: 10px;
+        }
+        .api-key-container, .api-key-actions {
+            display: none;
+        }
+        .api-key-container.visible, .api-key-actions.visible {
+            display: block;
+        }
+    </style>
+    <?php 
+    //Get and validate current tab
     $active_tab = isset($_GET['tab']) ? sanitize_text_field($_GET['tab']) : 'general';
     $valid_tabs = array('general', 'templates', 'api', 'tools');
     
@@ -639,7 +758,7 @@ function certificate_generator_settings_page() {
                 ?>
             </form>
         <?php elseif ($active_tab == 'api') : ?>
-            <form action="options.php" method="post">
+            <form action="options.php" method="post" id="certificate_generator_settings">
                 <?php
                 settings_fields('certificate_generator_settings');
                 // Explicitly output the API section
@@ -743,14 +862,21 @@ function certificate_generator_api_key_render() {
     echo '<div id="api-key-section">';
     
     if (empty($api_key)) {
-        echo '<button type="button" id="generate-api-key" class="button button-secondary">' . esc_html__('Generate API Key', 'certificate-generator') . '</button>';
+        echo '<button type="button" id="generate-api-key" class="button button-primary">' . esc_html__('Generate API Key', 'certificate-generator') . '</button>';
         echo '<p class="description">' . esc_html__('Click to generate a secure API key for external integrations.', 'certificate-generator') . '</p>';
     } else {
-        echo '<input type="text" id="certificate_generator_api_key_display" value="' . esc_attr(substr($api_key, 0, 8) . '...' . substr($api_key, -8)) . '" readonly style="width: 300px;" />';
+        echo '<div class="api-key-container visible" style="margin-bottom: 10px;">';
+        echo '<input type="text" id="certificate_generator_api_key_display" value="' . esc_attr($api_key) . '" readonly style="width: 100%; max-width: 500px; font-family: monospace;" />';
         echo '<input type="hidden" id="certificate_generator_api_key" name="certificate_generator_api_key" value="' . esc_attr($api_key) . '" />';
-        echo '<button type="button" id="show-api-key" class="button button-secondary" style="margin-left: 10px;">' . esc_html__('Show Full Key', 'certificate-generator') . '</button>';
-        echo '<button type="button" id="regenerate-api-key" class="button button-secondary" style="margin-left: 10px;">' . esc_html__('Regenerate', 'certificate-generator') . '</button>';
+        echo '</div>';
+        
+        echo '<div class="api-key-actions visible" style="margin-bottom: 15px;">';
+        echo '<button type="button" id="regenerate-api-key" class="button button-secondary">' . esc_html__('Regenerate', 'certificate-generator') . '</button>';
         echo '<button type="button" id="copy-api-key" class="button button-secondary" style="margin-left: 10px;">' . esc_html__('Copy', 'certificate-generator') . '</button>';
+        echo '<button type="button" id="show-api-key" class="button button-secondary" style="margin-left: 10px;">' . esc_html__('Show Full Key', 'certificate-generator') . '</button>';
+        echo '<button type="button" id="delete-api-key" class="button button-secondary" style="margin-left: 10px; color: #dc3232;">' . esc_html__('Delete', 'certificate-generator') . '</button>';
+        echo '</div>';
+        
         echo '<p class="description">' . esc_html__('Keep this API key secure. It provides full access to certificate generation.', 'certificate-generator') . '</p>';
         
         if ($api_enabled) {
@@ -765,6 +891,8 @@ function certificate_generator_api_key_render() {
     <script>
     jQuery(document).ready(function($) {
         $('#generate-api-key, #regenerate-api-key').on('click', function() {
+            console.log('API key button clicked: ' + $(this).attr('id'));
+            
             if ($(this).attr('id') === 'regenerate-api-key') {
                 if (!confirm('<?php echo esc_js(__('Are you sure you want to regenerate the API key? This will invalidate the current key.', 'certificate-generator')); ?>')) {
                     return;
@@ -772,15 +900,50 @@ function certificate_generator_api_key_render() {
             }
             
             // Generate a secure random API key
-            const apiKey = generateSecureApiKey();
-            $('#certificate_generator_api_key').val(apiKey);
-            $('#certificate_generator_api_key_display').val(apiKey.substring(0, 8) + '...' + apiKey.substring(apiKey.length - 8));
-            
-            // Update the UI
-            $('#generate-api-key').hide();
-            $('#certificate_generator_api_key_display, #show-api-key, #regenerate-api-key, #copy-api-key').show();
-            
-            alert('<?php echo esc_js(__('API key generated successfully! Remember to save your settings.', 'certificate-generator')); ?>');
+            generateSecureApiKey().then(function(apiKey) {
+                console.log('Generated API key: ' + apiKey.substring(0, 5) + '...');
+                console.log('Form exists: ' + ($('form#certificate_generator_settings').length > 0 ? 'Yes' : 'No'));
+                
+                // Save the API key via AJAX first
+                console.log('Sending AJAX request to save API key');
+                $.ajax({
+                    url: ajaxurl,
+                    type: 'POST',
+                    data: {
+                        action: 'certificate_generator_save_api_key',
+                        api_key: apiKey,
+                        nonce: '<?php echo wp_create_nonce("save_api_key_nonce"); ?>'
+                    },
+                    success: function(response) {
+                        console.log('AJAX response:', response);
+                        
+                        if (response.success) {
+                            // Update the UI only after successful save
+                            $('#certificate_generator_api_key').val(apiKey);
+                            $('#certificate_generator_api_key_display').val(apiKey);
+                            $('#generate-api-key').hide();
+                            $('.api-key-container, .api-key-actions').show();
+                            
+                            // Enable API access by default when generating new key
+                            $('#certificate_generator_api_key_enabled').prop('checked', true);
+                            console.log('API access checkbox checked');
+                            
+                            // Save settings and reload
+                            alert('<?php echo esc_js(__('API key generated successfully! The page will now reload.', 'certificate-generator')); ?>');
+                            
+                            console.log('Reloading page in 500ms to reflect changes');
+                            setTimeout(function() {
+                                location.reload();
+                            }, 500);
+                        } else {
+                            alert('<?php echo esc_js(__('Failed to save API key. Please try again or contact support.', 'certificate-generator')); ?>');
+                        }
+                    },
+                    error: function() {
+                        alert('<?php echo esc_js(__('Failed to save API key. Please try again or contact support.', 'certificate-generator')); ?>');
+                    }
+                });
+            });
         });
         
         $('#show-api-key').on('click', function() {
@@ -796,29 +959,94 @@ function certificate_generator_api_key_render() {
             }
         });
         
-        $('#copy-api-key').on('click', function() {
-            const apiKey = $('#certificate_generator_api_key').val();
-            navigator.clipboard.writeText(apiKey).then(function() {
-                alert('<?php echo esc_js(__('API key copied to clipboard!', 'certificate-generator')); ?>');
-            }).catch(function() {
-                // Fallback for older browsers
-                const textArea = document.createElement('textarea');
-                textArea.value = apiKey;
-                document.body.appendChild(textArea);
-                textArea.select();
-                document.execCommand('copy');
-                document.body.removeChild(textArea);
-                alert('<?php echo esc_js(__('API key copied to clipboard!', 'certificate-generator')); ?>');
-            });
-        });
+        // Initialize key display with masked version
+        if ($('#certificate_generator_api_key').val()) {
+            const fullKey = $('#certificate_generator_api_key').val();
+            $('#certificate_generator_api_key_display').val(fullKey);
+        }
         
-        function generateSecureApiKey() {
-            const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-            let result = '';
-            for (let i = 0; i < 64; i++) {
-                result += chars.charAt(Math.floor(Math.random() * chars.length));
-            }
-            return result;
+        $('#copy-api-key').on('click', function() {
+             const apiKey = $('#certificate_generator_api_key').val();
+             const $button = $(this);
+             const originalText = $button.text();
+             
+             navigator.clipboard.writeText(apiKey).then(function() {
+                 $button.text('<?php echo esc_js(__('Copied!', 'certificate-generator')); ?>');
+                 setTimeout(function() {
+                     $button.text(originalText);
+                 }, 2000);
+             }).catch(function() {
+                 // Fallback for older browsers
+                 const textArea = document.createElement('textarea');
+                 textArea.value = apiKey;
+                 document.body.appendChild(textArea);
+                 textArea.select();
+                 document.execCommand('copy');
+                 document.body.removeChild(textArea);
+                 $button.text('<?php echo esc_js(__('Copied!', 'certificate-generator')); ?>');
+                 setTimeout(function() {
+                     $button.text(originalText);
+                 }, 2000);
+             });
+         });
+         
+         // Delete API key handler
+         $('#delete-api-key').on('click', function() {
+             if (!confirm('<?php echo esc_js(__('Are you sure you want to delete the API key? This will permanently remove the key and disable API access.', 'certificate-generator')); ?>')) {
+                 return;
+             }
+             
+             console.log('Deleting API key');
+             $.ajax({
+                 url: ajaxurl,
+                 type: 'POST',
+                 data: {
+                     action: 'certificate_generator_delete_api_key',
+                     nonce: '<?php echo wp_create_nonce("delete_api_key_nonce"); ?>'
+                 },
+                 success: function(response) {
+                     console.log('Delete AJAX response:', response);
+                     
+                     if (response.success) {
+                         // Clear the UI
+                         $('#certificate_generator_api_key').val('');
+                         $('#certificate_generator_api_key_display').val('');
+                         $('.api-key-container, .api-key-actions').hide().removeClass('visible');
+                         $('#generate-api-key').show();
+                         
+                         // Disable API access checkbox
+                         $('#certificate_generator_api_key_enabled').prop('checked', false);
+                         
+                         alert('<?php echo esc_js(__('API key deleted successfully! The page will now reload.', 'certificate-generator')); ?>');
+                         
+                         // Reload page to reflect changes
+                         setTimeout(function() {
+                             location.reload();
+                         }, 500);
+                     } else {
+                         alert('<?php echo esc_js(__('Failed to delete API key. Please try again or contact support.', 'certificate-generator')); ?>');
+                     }
+                 },
+                 error: function() {
+                     alert('<?php echo esc_js(__('Failed to delete API key. Please try again or contact support.', 'certificate-generator')); ?>');
+                 }
+             });
+         });
+         
+         // Show API key containers if key exists
+        if ($('#certificate_generator_api_key').val()) {
+            $('.api-key-container, .api-key-actions').addClass('visible');
+            $('#generate-api-key').hide();
+        } else {
+            // If no API key exists, show the generate button and hide containers
+            $('.api-key-container, .api-key-actions').removeClass('visible');
+            $('#generate-api-key').show();
+        }
+
+        async function generateSecureApiKey() {
+            const array = new Uint8Array(32);
+            window.crypto.getRandomValues(array);
+            return Array.from(array, byte => byte.toString(16).padStart(2, '0')).join('');
         }
     });
     </script>
@@ -838,4 +1066,212 @@ function certificate_generator_is_wp_mail_smtp_active() {
     
     return is_plugin_active('wp-mail-smtp/wp_mail_smtp.php') || is_plugin_active('wp-mail-smtp-pro/wp_mail_smtp.php');
 }
+
+/**
+ * API Debug Dashboard Function
+ * Provides comprehensive debugging information for API functionality
+ */
+function certificate_generator_api_debug_dashboard() {
+    // Check if user is logged in and has admin capabilities
+    if (!current_user_can('manage_options')) {
+        wp_die(__('You do not have sufficient permissions to access this page.'));
+    }
+
+    // Get current API settings
+    $api_key = get_option('certificate_generator_api_key', '');
+    $api_enabled = get_option('certificate_generator_api_key_enabled', false);
+
+    // Get raw database values
+    global $wpdb;
+    $api_key_raw = $wpdb->get_var("SELECT option_value FROM {$wpdb->options} WHERE option_name = 'certificate_generator_api_key'");
+    $api_enabled_raw = $wpdb->get_var("SELECT option_value FROM {$wpdb->options} WHERE option_name = 'certificate_generator_api_key_enabled'");
+
+    ob_start();
+    ?>
+    <div class="wrap">
+        <h1>API Debug Dashboard</h1>
+        <p>This dashboard provides a central location for all API debugging tools and information.</p>
+        
+        <div class="notice notice-warning">
+            <p><strong>Warning:</strong> These debug tools are for development and troubleshooting purposes only. They should be removed in production environments.</p>
+        </div>
+        
+        <h2>API Status Overview</h2>
+        <div class="dashboard-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); grid-gap: 20px;">
+            <div class="postbox">
+                <h3 class="hndle">API Access</h3>
+                <div class="inside">
+                    <?php if ($api_enabled): ?>
+                        <p><span class="dashicons dashicons-yes-alt" style="color: #46b450;"></span> <strong>Enabled</strong></p>
+                    <?php else: ?>
+                        <p><span class="dashicons dashicons-warning" style="color: #dc3232;"></span> <strong>Disabled</strong></p>
+                        <p>API access is currently disabled. Enable it in the settings.</p>
+                    <?php endif; ?>
+                    <p><a href="<?php echo esc_url(admin_url('options-general.php?page=certificate_generator_settings&tab=api')); ?>" class="button button-secondary">Configure</a></p>
+                </div>
+            </div>
+            
+            <div class="postbox">
+                <h3 class="hndle">API Key</h3>
+                <div class="inside">
+                    <?php if ($api_key): ?>
+                        <p><span class="dashicons dashicons-yes-alt" style="color: #46b450;"></span> <strong>Generated</strong></p>
+                        <p>Key: <code><?php echo esc_html(substr($api_key, 0, 8) . '...' . substr($api_key, -8)); ?></code></p>
+                    <?php else: ?>
+                        <p><span class="dashicons dashicons-warning" style="color: #dc3232;"></span> <strong>Not Generated</strong></p>
+                        <p>No API key has been generated yet.</p>
+                    <?php endif; ?>
+                    <p><a href="<?php echo esc_url(admin_url('options-general.php?page=certificate_generator_settings&tab=api')); ?>" class="button button-secondary">Manage Key</a></p>
+                </div>
+            </div>
+            
+            <div class="postbox">
+                <h3 class="hndle">REST API</h3>
+                <div class="inside">
+                    <?php 
+                    $rest_available = site_url('/wp-json/') ? true : false;
+                    if ($rest_available): 
+                    ?>
+                        <p><span class="dashicons dashicons-yes-alt" style="color: #46b450;"></span> <strong>Available</strong></p>
+                        <p>REST API is properly configured.</p>
+                    <?php else: ?>
+                        <p><span class="dashicons dashicons-warning" style="color: #dc3232;"></span> <strong>Unavailable</strong></p>
+                        <p>REST API appears to be disabled or misconfigured.</p>
+                    <?php endif; ?>
+                </div>
+            </div>
+            
+            <div class="postbox">
+                <h3 class="hndle">Database Status</h3>
+                <div class="inside">
+                    <?php 
+                    $db_status_ok = ($api_key_raw !== null && ($api_enabled_raw !== null || $api_enabled_raw === '0'));
+                    if ($db_status_ok): 
+                    ?>
+                        <p><span class="dashicons dashicons-yes-alt" style="color: #46b450;"></span> <strong>OK</strong></p>
+                        <p>Database options are properly stored.</p>
+                    <?php else: ?>
+                        <p><span class="dashicons dashicons-warning" style="color: #dc3232;"></span> <strong>Issues Detected</strong></p>
+                        <p>There may be issues with the database options.</p>
+                    <?php endif; ?>
+                </div>
+            </div>
+        </div>
+        
+        <div class="postbox">
+            <h3 class="hndle">API Settings Details</h3>
+            <div class="inside">
+                <table class="widefat">
+                    <thead>
+                        <tr>
+                            <th>Setting</th>
+                            <th>Value</th>
+                            <th>Raw Database Value</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>API Access Enabled</td>
+                            <td><?php echo $api_enabled ? 'Yes' : 'No'; ?></td>
+                            <td><code><?php echo esc_html(var_export($api_enabled_raw, true)); ?></code></td>
+                        </tr>
+                        <tr>
+                            <td>API Key</td>
+                            <td>
+                                <?php if ($api_key): ?>
+                                    <div class="api-key" style="font-family: monospace; padding: 10px; background: #f9f9f9; border: 1px solid #ddd; border-radius: 3px; word-break: break-all;">
+                                        <?php echo esc_html($api_key); ?>
+                                    </div>
+                                <?php else: ?>
+                                    <em>No API key has been generated</em>
+                                <?php endif; ?>
+                            </td>
+                            <td><code><?php echo $api_key_raw ? esc_html(strlen($api_key_raw) > 20 ? substr($api_key_raw, 0, 10) . '...' . substr($api_key_raw, -10) : $api_key_raw) : 'NULL'; ?></code></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        
+        <div class="postbox">
+            <h3 class="hndle">API Endpoints</h3>
+            <div class="inside">
+                <table class="widefat">
+                    <thead>
+                        <tr>
+                            <th>Endpoint</th>
+                            <th>Method</th>
+                            <th>Description</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code><?php echo esc_url(site_url('/wp-json/certificate-generator/v1/health-check')); ?></code></td>
+                            <td>GET</td>
+                            <td>Health check endpoint to verify API connectivity</td>
+                        </tr>
+                        <tr>
+                            <td><code><?php echo esc_url(site_url('/wp-json/certificate-generator/v1/issue-certificate')); ?></code></td>
+                            <td>POST</td>
+                            <td>Issue a new certificate</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        
+        <div class="postbox">
+            <h3 class="hndle">Troubleshooting Information</h3>
+            <div class="inside">
+                <h4>Common Issues</h4>
+                <ol>
+                    <li><strong>API Key Not Generating:</strong> Check for JavaScript errors in the browser console. The new API key fix script should resolve this issue.</li>
+                    <li><strong>API Key Not Saving:</strong> Verify that the form is submitting correctly and that the database is functioning properly.</li>
+                    <li><strong>API Access Not Working:</strong> Ensure that both the API key is generated and API access is enabled.</li>
+                    <li><strong>REST API Errors:</strong> Check for security plugins that might be blocking REST API access.</li>
+                </ol>
+                
+                <h4>JavaScript Console Commands</h4>
+                <p>You can use these commands in your browser's developer console to debug API key issues:</p>
+                <pre style="background: #f5f5f5; padding: 15px; border: 1px solid #ddd; border-radius: 3px; overflow: auto; max-height: 400px;">
+                    // Check if API key field exists
+                    
+
+                    // Check if API key enabled field exists
+                    console.log('API Key Enabled Field:', document.getElementById('certificate_generator_api_key_enabled'));
+
+                    // Generate a test API key
+                    function generateTestKey() {
+                        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+                        let result = '';
+                        for (let i = 0; i < 64; i++) {
+                            result += chars.charAt(Math.floor(Math.random() * chars.length));
+                        }
+                        console.log('Generated Test Key:', result);
+                        return result;
+                    }
+                    generateTestKey();
+                </pre>
+                            
+                <h4>PHP Debugging</h4>
+                <p>Add this code to your theme's functions.php file for additional debugging:</p>
+                <pre style="background: #f5f5f5; padding: 15px; border: 1px solid #ddd; border-radius: 3px; overflow: auto; max-height: 400px;">
+                    // Debug API key settings
+                    add_action('admin_footer', function() {
+                        if (is_admin()) {
+                            echo '&lt;div style="display:none;"&gt;';
+                            echo 'API Key: ' . esc_html(get_option('certificate_generator_api_key', 'Not set')) . '&lt;br&gt;';
+                            echo 'API Enabled: ' . esc_html(var_export(get_option('certificate_generator_api_key_enabled', false), true)) . '&lt;br&gt;';
+                            echo '&lt;/div&gt;';
+                        }
+                    });
+                </pre>
+            </div>
+        </div>
+    </div>
+    <?php
+    return ob_get_clean();
+}
+
+?>
 

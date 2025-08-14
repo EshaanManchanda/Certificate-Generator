@@ -2,6 +2,7 @@
 
 // Include FPDF library (add this library in your plugin directory)
 require_once __DIR__ . '/fpdf/fpdf.php';
+require_once __DIR__ . '/class-font-manager.php';
 
 // Debug logging function
 function log_debug($message) {
@@ -184,6 +185,112 @@ function validate_template_url($template_url) {
     return true; // URL is valid and accessible
 }
 
+/**
+ * Calculate X position for text based on alignment
+ *
+ * @param float $field_x Original field X position (center point)
+ * @param float $text_width Actual width of the text
+ * @param float $field_width Width of the field boundary
+ * @param string $alignment Alignment type (L, C, R)
+ * @return float Calculated X position for text placement
+ */
+function certificate_calculate_x_position($field_x, $text_width, $field_width, $alignment) {
+    switch (strtoupper(trim($alignment))) {
+        case 'L': // Left Align
+            return $field_x - ($field_width / 2);
+        case 'R': // Right Align  
+            return $field_x + ($field_width / 2) - $text_width;
+        case 'C': // Center Align
+        default:
+            return $field_x - ($text_width / 2);
+    }
+}
+
+/**
+ * Wrap text to fit within specified width using actual font metrics
+ *
+ * @param FPDF $pdf PDF object with font already set
+ * @param string $text Text to wrap
+ * @param float $max_width Maximum width for text
+ * @return array Array of text lines
+ */
+function certificate_wrap_text($pdf, $text, $max_width) {
+    $words = explode(' ', $text);
+    $lines = [];
+    $current_line = '';
+    
+    foreach ($words as $word) {
+        $test_line = $current_line . ($current_line ? ' ' : '') . $word;
+        $test_width = $pdf->GetStringWidth($test_line);
+        
+        if ($test_width <= $max_width) {
+            $current_line = $test_line;
+        } else {
+            // If current line has content, save it and start new line
+            if ($current_line) {
+                $lines[] = $current_line;
+                $current_line = $word;
+            } else {
+                // Single word is too long, force it anyway
+                $lines[] = $word;
+                $current_line = '';
+            }
+        }
+    }
+    
+    // Add the last line if it has content
+    if ($current_line) {
+        $lines[] = $current_line;
+    }
+    
+    return $lines;
+}
+
+/**
+ * Add debug markers to show text positioning
+ *
+ * @param FPDF $pdf PDF object
+ * @param float $adjusted_x Calculated text X position
+ * @param float $adjusted_y Calculated text Y position
+ * @param float $original_x Original field X position
+ * @param float $original_y Original field Y position
+ * @param bool $is_primary Whether this is the primary line (for multi-line text)
+ */
+function certificate_add_debug_markers($pdf, $adjusted_x, $adjusted_y, $original_x, $original_y, $is_primary = true) {
+    // Green dot for original position (only for primary line)
+    if ($is_primary) {
+        $pdf->SetFillColor(0, 255, 0);
+        $pdf->Rect($original_x - 0.5, $original_y - 0.5, 1, 1, 'F');
+    }
+    
+    // Blue dot for adjusted position
+    $pdf->SetFillColor(0, 0, 255);
+    $pdf->Rect($adjusted_x - 0.3, $adjusted_y - 0.3, 0.6, 0.6, 'F');
+}
+
+/**
+ * Add debug field boundary visualization
+ *
+ * @param FPDF $pdf PDF object
+ * @param float $field_x Field center X position
+ * @param float $field_y Field center Y position
+ * @param float $field_width Field width
+ * @param float $field_height Field height
+ */
+function certificate_add_debug_field_boundary($pdf, $field_x, $field_y, $field_width, $field_height) {
+    // Save current drawing color
+    $pdf->SetDrawColor(255, 0, 0);
+    $pdf->SetLineWidth(0.2);
+    
+    // Draw field boundary rectangle
+    $rect_x = $field_x - ($field_width / 2);
+    $rect_y = $field_y - ($field_height / 2);
+    $pdf->Rect($rect_x, $rect_y, $field_width, $field_height, 'D');
+    
+    // Reset line width to default
+    $pdf->SetLineWidth(0.2);
+}
+
 function generate_certificate_pdf_with_data($post_data) {
     $debug_mode = true; // Toggle debugging logs 
     $visual_debug = true; // Toggle visual debugging elements on the PDF
@@ -219,22 +326,11 @@ function generate_certificate_pdf_with_data($post_data) {
     $template_orientation = get_post_meta($certificate_template->ID, 'template_orientation', true) ?: 'portrait';
     $font_size = get_post_meta($certificate_template->ID, 'font_size', true) ?: 12;
     $font_color = get_post_meta($certificate_template->ID, 'font_color', true) ?: '#000000';
-    $font_style = get_post_meta($certificate_template->ID, 'font_style', true) ?: 'Arial';
+    $font_style = get_post_meta($certificate_template->ID, 'font_style', true) ?: 'helvetica';
     
-    // Create font mapping for FPDF compatibility
-    $font_mapping = [
-        'times new roman' => 'times',
-        'times' => 'times',
-        'arial' => 'helvetica',
-        'helvetica' => 'helvetica',
-        'courier new' => 'courier',
-        'courier' => 'courier'
-    ];
-    
-    // Normalize font name for FPDF compatibility
-    $normalized_font = strtolower($font_style);
-    $pdf_font = isset($font_mapping[$normalized_font]) ? $font_mapping[$normalized_font] : 'helvetica';
-    log_debug("Font requested: {$font_style}, Normalized: {$normalized_font}, Using: {$pdf_font}");
+    // Initialize FontManager
+    $font_manager = CertificateGenerator_FontManager::getInstance();
+    log_debug("Font requested: {$font_style}");
 
     // Validate template
     $validation_result = validate_template_url($template_url);
@@ -296,14 +392,8 @@ function generate_certificate_pdf_with_data($post_data) {
     $font_color_rgb = sscanf($font_color, "#%02x%02x%02x");
     $pdf->SetTextColor($font_color_rgb[0], $font_color_rgb[1], $font_color_rgb[2]);
     
-    // Set default font using the normalized font name
-    try {
-        $pdf->SetFont($pdf_font, '', $font_size);
-    } catch (Exception $e) {
-        // If font still fails, use helvetica as ultimate fallback
-        log_debug('Font error: ' . $e->getMessage() . '. Using fallback font.');
-        $pdf->SetFont('helvetica', '', $font_size);
-    }
+    // Set default font using FontManager
+    $used_font = $font_manager->add_font_to_pdf($pdf, $font_style, '', $font_size);
 
     // Add template background
     $pdf->Image($template_url, 0, 0, $template_orientation === 'landscape' ? 297 : 210, $template_orientation === 'landscape' ? 210 : 297);
@@ -319,7 +409,7 @@ function generate_certificate_pdf_with_data($post_data) {
         $pdf->SetFont('helvetica', 'B', 8);
         $pdf->SetTextColor(0, 0, 0);
         $pdf->SetFillColor(255, 255, 255);
-        $pdf->SetAlpha(0.8); // Make background slightly transparent
+        // Note: SetAlpha may not be available in all FPDF versions
         
         // Draw debug info box
         $box_x = 5;
@@ -348,7 +438,7 @@ function generate_certificate_pdf_with_data($post_data) {
         $pdf->SetXY($box_x + 2, $box_y + 15);
         $pdf->SetDrawColor(0, 255, 0);
         $pdf->SetFillColor(0, 255, 0);
-        $pdf->Circle($box_x + 3.5, $box_y + 16.5, 0.5, 'F');
+        $pdf->Rect($box_x + 3, $box_y + 16, 1, 1, 'F');
         $pdf->SetXY($box_x + 6, $box_y + 15);
         $pdf->SetTextColor(0, 128, 0);
         $pdf->Cell($box_width - 8, 3, 'Green Dot: Original Position', 0, 1, 'L');
@@ -357,7 +447,7 @@ function generate_certificate_pdf_with_data($post_data) {
         $pdf->SetXY($box_x + 2, $box_y + 20);
         $pdf->SetDrawColor(0, 0, 255);
         $pdf->SetFillColor(0, 0, 255);
-        $pdf->Circle($box_x + 3.5, $box_y + 21.5, 0.5, 'F');
+        $pdf->Rect($box_x + 3, $box_y + 21, 1, 1, 'F');
         $pdf->SetXY($box_x + 6, $box_y + 20);
         $pdf->SetTextColor(0, 0, 255);
         $pdf->Cell($box_width - 8, 3, 'Blue Dot: Adjusted Position', 0, 1, 'L');
@@ -368,145 +458,87 @@ function generate_certificate_pdf_with_data($post_data) {
         $pdf->Cell($box_width - 4, 3, 'Certificate Generator Debug v1.0', 0, 1, 'L');
         
         // Restore original settings
-        $pdf->SetAlpha(1.0);
-        $pdf->SetFont($pdf_font, '', $font_size);
+        $font_manager->add_font_to_pdf($pdf, $font_style, '', $font_size);
         $pdf->SetTextColor($current_color_r, $current_color_g, $current_color_b);
     }
 
-    // **Word Wrap and Alignment Logic**
+    // **Enhanced Text Positioning and Alignment Logic**
     foreach ($field_positions as $field => $position) {
         if ($position['visible'] == '0') {
-                log_debug("Skipping hidden field: {$field}");
+            if ($debug_mode) error_log("Skipping hidden field: {$field}");
             continue; // Skip hidden fields
         }
-        if (!empty($post_data[$field]) && is_numeric($position['x']) && is_numeric($position['y'])) {
+        
+        if (empty($post_data[$field]) || !is_numeric($position['x']) || !is_numeric($position['y'])) {
+            if ($debug_mode) error_log("Invalid data or position for $field: X={$position['x']}, Y={$position['y']}, Data=" . (empty($post_data[$field]) ? 'empty' : 'present'));
+            continue;
+        }
+
+        // **Set Font and Prepare Text**
+        $font_manager->add_font_to_pdf($pdf, $font_style, 'B', $font_size);
+        $text = mb_convert_encoding($post_data[$field], 'ISO-8859-1', 'UTF-8');
+        
+        // **Use accurate FPDF text width calculation**
+        $text_width = $pdf->GetStringWidth($text);
+        $field_width = floatval($position['width']);
+        
+        // **Calculate proper line height based on font size**
+        $line_height = $font_size * 0.5; // Tighter line spacing for better appearance
+        
+        if ($debug_mode) {
+            error_log("Processing field {$field}: text_width={$text_width}, field_width={$field_width}, alignment={$position['align']}");
+        }
+
+        // **Determine if text needs wrapping**
+        if ($text_width > $field_width) {
+            // **Multi-line text with word wrapping**
+            $lines = certificate_wrap_text($pdf, $text, $field_width);
+            
+            // Calculate total text block height
+            $total_text_height = count($lines) * $line_height;
+            
+            // Calculate starting Y position for vertical centering
+            $start_y = $position['y'] - ($total_text_height / 2) + ($line_height / 2);
+            
+            // Draw each line with proper alignment
+            foreach ($lines as $i => $line) {
+                $line_text = mb_convert_encoding($line, 'ISO-8859-1', 'UTF-8');
+                $line_width = $pdf->GetStringWidth($line_text);
                 
-                // **Set Font**
-                $pdf->SetFont($font_style, 'B', $font_size);
-                $text = mb_convert_encoding($post_data[$field], 'ISO-8859-1', 'UTF-8');
-
-                // **Text Width Calculation**
-                $char_width = $font_size * 0.2; // Approximate character width in mm
-                $text_width = mb_strlen($text) * $char_width;
-                $field_width = $position['width'];
-
-                // **Word Wrap Logic**
-                if ($text_width > $field_width) {
-                    // Calculate approximate chars per line based on field width
-                    $chars_per_line = floor($field_width / $char_width);
-                    
-                    // Split text into words
-                    $words = explode(' ', $text);
-                    $lines = [];
-                    $current_line = '';
-                    
-                    // Build lines word by word
-                    foreach ($words as $word) {
-                        $test_line = $current_line . ($current_line ? ' ' : '') . $word;
-                        if (mb_strlen($test_line) <= $chars_per_line) {
-                            $current_line = $test_line;
-                        } else {
-                            if ($current_line) {
-                                $lines[] = $current_line;
-                            }
-                            $current_line = $word;
-                        }
-                    }
-                    
-                    // Add the last line
-                    if ($current_line) {
-                        $lines[] = $current_line;
-                    }
-                    
-                    // Calculate line height based on font size
-                    $line_height = $font_size * 0.5; // Adjust as needed
-                    
-                    // Draw each line
-                    foreach ($lines as $i => $line) {
-                        $line_text = mb_convert_encoding($line, 'ISO-8859-1', 'UTF-8');
-                        $line_width = mb_strlen($line_text) * $char_width;
-                        
-                        // **Determine Adjusted X Based on Alignment**
-                        error_log("Alignment for {$field} (multiline): '{$position['align']}'");
-                        
-                        switch ($position['align']) {
-                            case 'L': // Left Align
-                                $adjusted_x = $position['x'] - $field_width / 2; // Start from left
-                                error_log("Using LEFT alignment for {$field}");
-                                break;
-                            case 'R': // Right Align
-                                $adjusted_x = $position['x'] + ($field_width/2) - $line_width; // Calculate from right edge by subtracting text width
-                                error_log("Using RIGHT alignment for {$field} with adjusted_x: {$adjusted_x}");
-                                break;
-                            case 'C': // Center Align
-                            default:
-                                $adjusted_x = $position['x'] - $line_width / 2; // Center the text
-                                error_log("Using CENTER alignment for {$field} (default or explicit)");
-                                break;
-                        }
-                        
-                        $adjusted_y = $position['y'] + ($i * $line_height);
-                        $pdf->Text($adjusted_x, $adjusted_y, $line_text);
-                        
-                        // Draw dots for debugging (only for first and last line)
-                        if ($i === 0 || $i === count($lines) - 1) {
-                            $pdf->SetFillColor(0, 0, 255); // Blue for Adjusted Position
-                            $pdf->Rect($adjusted_x, $adjusted_y, 1, 1, 'F');
-                        }
-                    }
-                    
-                    // Draw border around the entire text area
-                    $total_height = count($lines) * $line_height;
-                    $pdf->SetDrawColor(255, 0, 0); // Red for field border
-                    $pdf->Rect($position['x'] - $field_width / 2, $position['y'] - $font_size, 
-                              $field_width, $total_height + $font_size, 'D');
-                    
-                    // Draw original position dot
-                    $pdf->SetFillColor(0, 255, 0); // Green for Original Position
-                    $pdf->Rect($position['x'], $position['y'], 1, 1, 'F');
-                    
-                } else {
-                    // **Single Line Text Logic**
-                    // **Determine Adjusted X Based on Alignment**
-                    // Log the alignment value for debugging
-                    error_log("Alignment for {$field} (single line): '{$position['align']}'");
-                    
-                    switch ($position['align']) {
-                        case 'L': // Left Align
-                            $adjusted_x = $position['x'] - $field_width / 2; // Start from left
-                            error_log("Using LEFT alignment for {$field} (single line)");
-                            break;
-                        case 'R': // Right Align
-                            $adjusted_x = $position['x'] + $field_width / 2 - $text_width; // End at right
-                            error_log("Using RIGHT alignment for {$field} (single line), adjusted_x: {$adjusted_x}");
-                            break;
-                        case 'C': // Center Align
-                        default:
-                            $adjusted_x = $position['x'] - $text_width / 2; // Center the text
-                            error_log("Using CENTER alignment for {$field} (single line, default or explicit)");
-                            break;
-                    }
-
-                    // **Set Position and Output Text**
-                    // For right alignment, we need to make sure we're using the adjusted x position
-                    $pdf->SetXY($adjusted_x, $position['y']);
-                    $pdf->Text($adjusted_x, $position['y'], $text);
-
-                    // **Debugging: Draw a Border around the Field**
-                    $pdf->SetDrawColor(255, 0, 0); // Red for field border
-                    $pdf->Rect($position['x'] - $field_width / 2, $position['y'] - $font_size, $field_width, $font_size + 2); // Draw border around the field
-
-                    // **Debugging: Draw a Small Dot at Position**
-                    $pdf->SetFillColor(0, 255, 0); // Green for Original Position
-                    $pdf->Rect($position['x'], $position['y'], 1, 1, 'F'); // Original Position
-                    $pdf->SetFillColor(0, 0, 255); // Blue for Adjusted Position
-                    $pdf->Rect($adjusted_x, $position['y'], 1, 1, 'F'); // Adjusted Position
+                // Calculate X position based on alignment
+                $adjusted_x = certificate_calculate_x_position($position['x'], $line_width, $field_width, $position['align']);
+                $adjusted_y = $start_y + ($i * $line_height);
+                
+                // Output the text
+                $pdf->Text($adjusted_x, $adjusted_y, $line_text);
+                
+                // Add debug visualization if enabled
+                if ($visual_debug) {
+                    certificate_add_debug_markers($pdf, $adjusted_x, $adjusted_y, $position['x'], $position['y'], $i === 0);
                 }
-                
-            } else {
-                error_log("Invalid position for $field: X={$position['x']}, Y={$position['y']}");
+            }
+            
+            // Add debug visualization for field boundary
+            if ($visual_debug) {
+                certificate_add_debug_field_boundary($pdf, $position['x'], $position['y'], $field_width, $total_text_height);
+            }
+            
+        } else {
+            // **Single line text**
+            
+            // Calculate X position based on alignment
+            $adjusted_x = certificate_calculate_x_position($position['x'], $text_width, $field_width, $position['align']);
+            
+            // Output the text
+            $pdf->Text($adjusted_x, $position['y'], $text);
+            
+            // Add debug visualization if enabled
+            if ($visual_debug) {
+                certificate_add_debug_markers($pdf, $adjusted_x, $position['y'], $position['x'], $position['y'], true);
+                certificate_add_debug_field_boundary($pdf, $position['x'], $position['y'], $field_width, $font_size + 2);
             }
         }
+    }
     
 
     // Output PDF
@@ -695,36 +727,9 @@ function generate_certificate_pdf($post_id, $fields) {
         $pdf = new FPDF($template_orientation, 'mm', 'A4');
         $pdf->AddPage();
 
-        // Add font support
-        switch ($font_style) {
-            case 'Times New Roman':
-                $pdf->AddFont('Times New Roman', 'B', 'Times New Roman Bold.php');
-                $pdf->AddFont('Times New Roman', '', 'Times New Roman.php');
-                break;
-            case 'Helvetica':
-                $pdf->AddFont('Helvetica', 'B', 'helveticab.php');
-                $pdf->AddFont('Helvetica', '', 'helvetica.php');
-                break;
-            case 'Courier New':
-                $pdf->AddFont('Courier New', 'B', 'cour.php');
-                $pdf->AddFont('Courier New', '', 'cour.php');
-                break;
-            case 'Verdana':
-                $pdf->AddFont('Verdana', 'B', 'Verdanab.php');
-                $pdf->AddFont('Verdana', '', 'Verdana.php');
-                break;
-            case 'Palatino':
-                $pdf->AddFont('Palatino', 'B', 'Palatino Font.php');
-                $pdf->AddFont('Palatino', '', 'Palatino Font.php');
-                break;
-            case 'Garamond':
-                $pdf->AddFont('Garamond', 'B', 'garmond.php');
-                $pdf->AddFont('Garamond', '', 'Garamond Regular.php');
-                break;
-            default:
-                // Use default font
-                break;
-        }
+        // Add font support using FontManager
+        $font_manager = CertificateGenerator_FontManager::getInstance();
+        $used_font = $font_manager->add_font_to_pdf($pdf, $font_style, '', $font_size);
 
         // Set font color
         $font_color_rgb = sscanf($font_color, "#%02x%02x%02x");
@@ -738,7 +743,7 @@ function generate_certificate_pdf($post_id, $fields) {
             return false;
         }
 
-        // **Word Wrap and Alignment Logic**
+        // **Enhanced Text Positioning and Alignment Logic**
         foreach ($field_positions as $field => $position) {
             if (!isset($post_data[$field])) {
                 error_log("Field $field exists in positions but not in post data");
@@ -747,103 +752,60 @@ function generate_certificate_pdf($post_id, $fields) {
             
             // Skip if field is not visible
             if ($position['visible'] == '0') {
-                log_debug("Skipping hidden field: {$field}");
+                error_log("Skipping hidden field: {$field}");
                 continue;
             }
             
-            if (!empty($post_data[$field])) {
-                if (is_numeric($position['x']) && is_numeric($position['y'])) {
+            if (empty($post_data[$field]) || !is_numeric($position['x']) || !is_numeric($position['y'])) {
+                error_log("Invalid data or position for $field: X={$position['x']}, Y={$position['y']}, Data=" . (empty($post_data[$field]) ? 'empty' : 'present'));
+                continue;
+            }
+
+            // **Set Font and Prepare Text**
+            $font_manager->add_font_to_pdf($pdf, $font_style, 'B', $font_size);
+            $text = mb_convert_encoding($post_data[$field], 'ISO-8859-1', 'UTF-8');
+            
+            // **Use accurate FPDF text width calculation**
+            $text_width = $pdf->GetStringWidth($text);
+            $field_width = floatval($position['width']);
+            
+            // **Calculate proper line height based on font size**
+            $line_height = $font_size * 0.5; // Tighter line spacing for better appearance
+            
+            error_log("Processing field {$field}: text_width={$text_width}, field_width={$field_width}, alignment={$position['align']}");
+
+            // **Determine if text needs wrapping**
+            if ($text_width > $field_width) {
+                // **Multi-line text with word wrapping**
+                $lines = certificate_wrap_text($pdf, $text, $field_width);
+                
+                // Calculate total text block height
+                $total_text_height = count($lines) * $line_height;
+                
+                // Calculate starting Y position for vertical centering
+                $start_y = $position['y'] - ($total_text_height / 2) + ($line_height / 2);
+                
+                // Draw each line with proper alignment
+                foreach ($lines as $i => $line) {
+                    $line_text = mb_convert_encoding($line, 'ISO-8859-1', 'UTF-8');
+                    $line_width = $pdf->GetStringWidth($line_text);
                     
-                    // **Set Font**
-                    $pdf->SetFont($font_style, 'B', $font_size);
-                    $text = mb_convert_encoding($post_data[$field], 'ISO-8859-1', 'UTF-8');
-
-                    // **Text Width Calculation**
-                    $char_width = $font_size * 0.2; // Approximate character width in mm
-                    $text_width = mb_strlen($text) * $char_width;
-                    $field_width = $position['width'];
-
-                    // **Word Wrap Logic**
-                    if ($text_width > $field_width) {
-                        // Calculate approximate chars per line based on field width
-                        $chars_per_line = floor($field_width / $char_width);
-                        
-                        // Split text into words
-                        $words = explode(' ', $text);
-                        $lines = [];
-                        $current_line = '';
-                        
-                        // Build lines word by word
-                        foreach ($words as $word) {
-                            $test_line = $current_line . ($current_line ? ' ' : '') . $word;
-                            if (mb_strlen($test_line) <= $chars_per_line) {
-                                $current_line = $test_line;
-                            } else {
-                                if ($current_line) {
-                                    $lines[] = $current_line;
-                                }
-                                $current_line = $word;
-                            }
-                        }
-                        
-                        // Add the last line
-                        if ($current_line) {
-                            $lines[] = $current_line;
-                        }
-                        
-                        // Calculate line height based on font size
-                        $line_height = $font_size * 0.5; // Adjust as needed
-                        
-                        // Draw each line
-                        foreach ($lines as $i => $line) {
-                            $line_text = mb_convert_encoding($line, 'ISO-8859-1', 'UTF-8');
-                            $line_width = mb_strlen($line_text) * $char_width;
-                            
-                            // **Determine Adjusted X Based on Alignment**
-                            switch ($position['align']) {
-                                case 'L': // Left Align
-                                    $adjusted_x = $position['x'] - $field_width / 2; // Start from left
-                                    break;
-                                case 'R': // Right Align
-                                    $adjusted_x = $position['x'] + $field_width / 2 - $line_width; // End at right
-                                    break;
-                                case 'C': // Center Align
-                                default:
-                                    $adjusted_x = $position['x'] - $line_width / 2; // Center the text
-                                    break;
-                            }
-                            
-                            $adjusted_y = $position['y'] + ($i * $line_height);
-                            $pdf->Text($adjusted_x, $adjusted_y, $line_text);
-                            
-                        }
-                        
-                        
-                    } else {
-                        // **Single Line Text Logic**
-                        // **Determine Adjusted X Based on Alignment**
-                        switch ($position['align']) {
-                            case 'L': // Left Align
-                                $adjusted_x = $position['x'] - $field_width / 2; // Start from left
-                                break;
-                            case 'R': // Right Align
-                                $adjusted_x = $position['x'] + $field_width / 2 - $text_width; // End at right
-                                break;
-                            case 'C': // Center Align
-                            default:
-                                $adjusted_x = $position['x'] - $text_width / 2; // Center the text
-                                break;
-                        }
-
-                        // **Set Position and Output Text**
-                        $pdf->SetXY($adjusted_x, $position['y']);
-                        $pdf->Text($adjusted_x, $position['y'], $text);
-
-                    }
+                    // Calculate X position based on alignment
+                    $adjusted_x = certificate_calculate_x_position($position['x'], $line_width, $field_width, $position['align']);
+                    $adjusted_y = $start_y + ($i * $line_height);
                     
-                } else {
-                    error_log("Invalid position for $field: X={$position['x']}, Y={$position['y']}");
+                    // Output the text
+                    $pdf->Text($adjusted_x, $adjusted_y, $line_text);
                 }
+                
+            } else {
+                // **Single line text**
+                
+                // Calculate X position based on alignment
+                $adjusted_x = certificate_calculate_x_position($position['x'], $text_width, $field_width, $position['align']);
+                
+                // Output the text
+                $pdf->Text($adjusted_x, $position['y'], $text);
             }
         }
 
@@ -1869,9 +1831,9 @@ function scs_student_search_shortcode(){
                         $processed_certificates[$certificate_key] = true;
                         
                         // Auto-send email if enabled and not already sent
-                        if (function_exists('certificate_generator_auto_send_email')) {
-                            certificate_generator_auto_send_email($post_id, 'students');
-                        }
+                        // if (function_exists('certificate_generator_auto_send_email')) {
+                        //     certificate_generator_auto_send_email($post_id, 'students');
+                        // }
                     }
                 }
             }
@@ -2248,5 +2210,6 @@ function scs_student_search_shortcode(){
 
     return $output;
 }
+
 
 ?>

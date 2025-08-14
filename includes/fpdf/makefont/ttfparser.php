@@ -64,8 +64,32 @@ class TTFParser
 	{
 		$version = $this->Read(4);
 		if($version=='OTTO')
-			$this->Error('OpenType fonts based on PostScript outlines are not supported');
-		if($version!="\x00\x01\x00\x00")
+		{
+			// Check if this is a TrueType-based OTF (has 'glyf' and 'loca' tables)
+			// If so, we can process it like a TTF
+			$currentPos = ftell($this->f);
+			$numTables = $this->ReadUShort();
+			$this->Skip(3*2); // searchRange, entrySelector, rangeShift
+			
+			$hasTrueTypeTables = false;
+			for($i=0;$i<$numTables;$i++)
+			{
+				$tag = $this->Read(4);
+				if($tag=='glyf' || $tag=='loca')
+				{
+					$hasTrueTypeTables = true;
+					break;
+				}
+				$this->Skip(3*4); // skip checkSum, offset, length
+			}
+			
+			if(!$hasTrueTypeTables)
+				$this->Error('OpenType fonts based on PostScript outlines are not supported');
+			
+			// Reset position to continue normal parsing
+			fseek($this->f, $currentPos);
+		}
+		elseif($version!="\x00\x01\x00\x00")
 			$this->Error('Unrecognized file format');
 		$numTables = $this->ReadUShort();
 		$this->Skip(3*2); // searchRange, entrySelector, rangeShift

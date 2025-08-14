@@ -325,26 +325,7 @@ function certificate_generator_get_email_stats() {
     return $stats;
 }
 
-/**
- * Check if email was already sent for a certificate
- *
- * @param int $cert_id Certificate post ID
- * @param string $email Recipient email
- * @return bool Whether email was already sent
- */
-function certificate_generator_email_already_sent($certificate_id, $email) {
-    global $wpdb;
-    
-    $table_name = $wpdb->prefix . 'cert_email_logs';
-    
-    $query = $wpdb->prepare(
-        "SELECT COUNT(*) FROM $table_name WHERE certificate_id = %d AND recipient_email = %s AND status = 'sent'",
-        $certificate_id,
-        $email
-    );
-    
-    return $count > 0;
-}
+// Note: certificate_generator_email_already_sent() function is now defined in email-functions.php
 
 /**
  * Delete old email logs (cleanup function)

@@ -30,7 +30,7 @@ function certificate_generator_save_api_key_ajax() {
         error_log('API Key AJAX handler triggered');
         error_log('POST data: ' . print_r($_POST, true));
     }
-    
+
     // Verify nonce
     if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'save_api_key_nonce')) {
         if (defined('WP_DEBUG') && WP_DEBUG) {
@@ -59,12 +59,12 @@ function certificate_generator_save_api_key_ajax() {
     // Save the API key and enable API access
     $key_updated = update_option('certificate_generator_api_key', $api_key);
     $access_updated = update_option('certificate_generator_api_key_enabled', true);
-    
+
     if (defined('WP_DEBUG') && WP_DEBUG) {
         error_log('API Key AJAX: Key updated: ' . ($key_updated ? 'true' : 'false'));
         error_log('API Key AJAX: Access updated: ' . ($access_updated ? 'true' : 'false'));
     }
-    
+
     if ($key_updated && $access_updated) {
         wp_send_json_success('API key saved and API access enabled successfully');
     } else {
@@ -78,7 +78,7 @@ function certificate_generator_delete_api_key_ajax() {
     if (defined('WP_DEBUG') && WP_DEBUG) {
         error_log('Delete API Key AJAX handler triggered');
     }
-    
+
     // Verify nonce
     if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], 'delete_api_key_nonce')) {
         if (defined('WP_DEBUG') && WP_DEBUG) {
@@ -98,12 +98,12 @@ function certificate_generator_delete_api_key_ajax() {
     // Delete the API key and disable API access
     $key_deleted = delete_option('certificate_generator_api_key');
     $access_disabled = update_option('certificate_generator_api_key_enabled', false);
-    
+
     if (defined('WP_DEBUG') && WP_DEBUG) {
         error_log('Delete API Key AJAX: Key deleted: ' . ($key_deleted ? 'true' : 'false'));
         error_log('Delete API Key AJAX: Access disabled: ' . ($access_disabled ? 'true' : 'false'));
     }
-    
+
     if ($key_deleted || $access_disabled) {
         wp_send_json_success('API key deleted and API access disabled successfully');
     } else {
@@ -150,7 +150,7 @@ function certificate_generator_settings_init() {
         'certificate_generator_settings',
         'certificate_generator_settings_section'
     );
-    
+
     // Add Email Template Settings Section
     add_settings_section(
         'certificate_generator_email_templates_section',
@@ -158,7 +158,7 @@ function certificate_generator_settings_init() {
         'certificate_generator_email_templates_section_callback',
         'certificate_generator_settings'
     );
-    
+
     // Add auto-send settings
     add_settings_field(
         'certificate_generator_auto_send_enabled',
@@ -176,10 +176,10 @@ function certificate_generator_settings_init() {
         'certificate_generator_settings_email',
         'certificate_generator_email_templates_section'
     );
-    
+
     // Add email template settings for each post type
     $post_types = ['students', 'teachers', 'schools'];
-    
+
     foreach ($post_types as $post_type) {
         add_settings_field(
             'certificate_generator_' . $post_type . '_email_template',
@@ -190,7 +190,7 @@ function certificate_generator_settings_init() {
             ['post_type' => $post_type]
         );
     }
-    
+
     // Add API Configuration section
     add_settings_section(
         'certificate_generator_api_section',
@@ -224,7 +224,7 @@ function certificate_generator_settings_init() {
         'certificate_generator_smtp_section_callback',
         'certificate_generator_settings'
     );
-    
+
     // Add SMTP fields
     add_settings_field(
         'certificate_generator_smtp_settings',
@@ -238,42 +238,42 @@ function certificate_generator_settings_init() {
 // Sanitize settings input
 function certificate_generator_sanitize_settings($input) {
     $output = [];
-    
+
     // Validate email
     if (isset($input['email']) && filter_var($input['email'], FILTER_VALIDATE_EMAIL)) {
         $output['email'] = sanitize_email($input['email']);
     }
-    
+
     // Validate colors
     foreach (['card_bg', 'title_color', 'text_color', 'btn_start', 'btn_end'] as $color_field) {
         if (isset($input[$color_field])) {
             $output[$color_field] = sanitize_hex_color($input[$color_field]);
         }
     }
-    
+
     // Validate numeric values
     foreach (['hover_effect', 'border_radius'] as $numeric_field) {
         if (isset($input[$numeric_field])) {
             $output[$numeric_field] = absint($input[$numeric_field]);
         }
     }
-    
+
     // Sanitize auto-send setting
     if (isset($input['auto_send_enabled'])) {
         $output['auto_send_enabled'] = (bool) $input['auto_send_enabled'];
     }
-    
+
     // Sanitize email logo URL
     if (isset($input['email_logo'])) {
         $output['email_logo'] = esc_url_raw($input['email_logo']);
     }
-    
+
     // Sanitize email template fields for each post type
     $post_types = ['students', 'teachers', 'schools'];
-    
+
     foreach ($post_types as $post_type) {
         $prefix = $post_type . '_email_';
-        
+
         // Sanitize text fields
         foreach (['subject', 'title', 'reply_to', 'cc', 'bcc'] as $field) {
             $key = $prefix . $field;
@@ -281,18 +281,18 @@ function certificate_generator_sanitize_settings($input) {
                 $output[$key] = sanitize_text_field($input[$key]);
             }
         }
-        
+
         // Sanitize message field separately to allow HTML content
         $message_key = $prefix . 'message';
         if (isset($input[$message_key])) {
             $output[$message_key] = wp_kses_post($input[$message_key]);
         }
-        
+
         // Sanitize checkbox fields
         $checkbox_key = $prefix . 'attach_certificate';
         $output[$checkbox_key] = isset($input[$checkbox_key]) ? '1' : '0';
     }
-    
+
     // Sanitize SMTP settings
     foreach (['host', 'port', 'username', 'password', 'encryption'] as $smtp_field) {
         $key = 'smtp_' . $smtp_field;
@@ -300,7 +300,7 @@ function certificate_generator_sanitize_settings($input) {
             $output[$key] = sanitize_text_field($input[$key]);
         }
     }
-    
+
     return $output;
 }
 
@@ -318,7 +318,7 @@ function certificate_generator_email_templates_section_callback() {
 function certificate_generator_auto_send_render() {
     $options = get_option('certificate_generator_settings_email', []);
     $auto_send_enabled = isset($options['auto_send_enabled']) ? $options['auto_send_enabled'] : false;
-    
+
     echo '<label>';
     echo '<input type="checkbox" name="certificate_generator_settings_email[auto_send_enabled]" value="1" ' . checked(1, $auto_send_enabled, false) . ' />';
     echo ' ' . __('Automatically send certificate emails when certificates are found/generated during search', 'certificate-generator');
@@ -330,10 +330,10 @@ function certificate_generator_auto_send_render() {
 function certificate_generator_email_logo_render() {
     $options = get_option('certificate_generator_settings_email', []);
     $email_logo = isset($options['email_logo']) ? $options['email_logo'] : '';
-    
+
     echo '<input type="url" name="certificate_generator_settings_email[email_logo]" value="' . esc_attr($email_logo) . '" class="regular-text" placeholder="https://example.com/logo.png" />';
     echo '<p class="description">' . __('Enter the URL of the logo to include in email headers. Leave empty to use no logo.', 'certificate-generator') . '</p>';
-    
+
     if (!empty($email_logo)) {
         echo '<div style="margin-top: 10px;">';
         echo '<img src="' . esc_url($email_logo) . '" alt="Email Logo Preview" style="max-width: 200px; max-height: 100px; border: 1px solid #ddd; padding: 5px;" />';
@@ -351,7 +351,7 @@ function certificate_generator_email_template_render($args) {
     $post_type = $args['post_type'];
     $options = get_option('certificate_generator_settings_email');
     $prefix = $post_type . '_email_';
-    
+
     $fields = [
         'subject' => [
             'label' => __('Email Subject', 'certificate-generator'),
@@ -369,7 +369,7 @@ function certificate_generator_email_template_render($args) {
             'label' => __('Email Message', 'certificate-generator'),
             'type' => 'textarea',
             'default' => sprintf(__('Dear {name},\n\nPlease find attached your %s certificate.\n\nThank you!', 'certificate-generator'), rtrim($post_type, 's')),
-            'desc' => __('Message body. Use {name} as placeholder for recipient name.', 'certificate-generator')
+            'desc' => __('Message body. Available placeholders: {name} (recipient name), {certificate_title} (certificate type), {result_link} (result page URL), {zip_link} (ZIP download URL if available), {certificate_count} (number of certificates), {email} (recipient email)', 'certificate-generator')
         ],
         'attach_certificate' => [
             'label' => __('Attach Certificate', 'certificate-generator'),
@@ -396,17 +396,17 @@ function certificate_generator_email_template_render($args) {
             'desc' => __('Blind carbon copy recipients (comma-separated emails)', 'certificate-generator')
         ],
     ];
-    
+
     echo '<div class="email-template-section" style="background: #fff; padding: 15px; border-radius: 8px; border: 1px solid #e0e0e0; margin-bottom: 20px;">';
     echo '<h3>' . esc_html(ucfirst($post_type)) . ' ' . esc_html__('Email Template', 'certificate-generator') . '</h3>';
-    
+
     foreach ($fields as $field => $config) {
         $key = $prefix . $field;
         $value = isset($options[$key]) ? $options[$key] : $config['default'];
-        
+
         echo '<div class="email-field" style="margin-bottom: 15px;">';
         echo '<label style="display: block; margin-bottom: 5px;"><strong>' . esc_html($config['label']) . '</strong></label>';
-        
+
         if ($config['type'] === 'textarea') {
             // Use WordPress editor for HTML support
             wp_editor($value, 'certificate_generator_settings_email_' . $key, array(
@@ -425,25 +425,25 @@ function certificate_generator_email_template_render($args) {
         } else {
             echo '<input type="' . esc_attr($config['type']) . '" name="certificate_generator_settings_email[' . esc_attr($key) . ']" value="' . esc_attr($value) . '" style="width: 100%;">';
         }
-        
+
         echo '<p class="description" style="margin-top: 5px; color: #666; font-style: italic;">' . esc_html($config['desc']) . '</p>';
         echo '</div>';
     }
-    
+
     echo '</div>';
 }
 
 // Render SMTP settings fields
 function certificate_generator_smtp_settings_render() {
     $options = get_option('certificate_generator_settings_email');
-    
+
     // Get email status information
     $email_status = certificate_generator_get_email_status();
     $wp_mail_smtp_active = $email_status['smtp_configured'];
-    
+
     // Display current email delivery status
     echo '<div class="smtp-settings" style="background: #fff; padding: 15px; border-radius: 8px; border: 1px solid #e0e0e0;">';
-    
+
     // Email delivery status section
     echo '<div class="email-status-section" style="margin-bottom: 20px; padding: 15px; background: #f8f9fa; border-radius: 5px;">';
     echo '<h4 style="margin-top: 0;">' . esc_html__('Current Email Delivery Method', 'certificate-generator') . '</h4>';
@@ -453,7 +453,7 @@ function certificate_generator_smtp_settings_render() {
     echo '<tr><td style="padding: 5px 0;"><strong>' . esc_html__('From Name:', 'certificate-generator') . '</strong></td><td style="padding: 5px 0;">' . esc_html($email_status['from_name']) . '</td></tr>';
     echo '</table>';
     echo '</div>';
-    
+
     if ($wp_mail_smtp_active) {
         echo '<div class="notice notice-success inline" style="margin: 0 0 15px; padding: 10px;">';
         echo '<p><strong>' . esc_html__('WP Mail SMTP Active!', 'certificate-generator') . '</strong></p>';
@@ -468,9 +468,9 @@ function certificate_generator_smtp_settings_render() {
         echo '<p><a href="https://wordpress.org/plugins/wp-mail-smtp/" target="_blank" class="button button-primary">' . esc_html__('Get WP Mail SMTP (Recommended)', 'certificate-generator') . '</a></p>';
         echo '</div>';
     }
-    
+
     echo '<p style="color: #666; font-style: italic;">' . esc_html__('Note: The SMTP settings below are deprecated and will be removed in a future version. Please use WP Mail SMTP plugin for SMTP configuration.', 'certificate-generator') . '</p>';
-    
+
     $fields = [
         'host' => [
             'label' => __('SMTP Host', 'certificate-generator'),
@@ -508,14 +508,14 @@ function certificate_generator_smtp_settings_render() {
             'desc' => __('SMTP account password', 'certificate-generator')
         ],
     ];
-    
+
     foreach ($fields as $field => $config) {
         $key = 'smtp_' . $field;
         $value = isset($options[$key]) ? $options[$key] : $config['default'];
-        
+
         echo '<div class="smtp-field" style="margin-bottom: 15px;">';
         echo '<label style="display: block; margin-bottom: 5px;"><strong>' . esc_html($config['label']) . '</strong></label>';
-        
+
         if ($config['type'] === 'select') {
             echo '<select name="certificate_generator_settings_email[' . esc_attr($key) . ']" style="width: 100%;">';
             foreach ($config['options'] as $option_value => $option_label) {
@@ -525,11 +525,11 @@ function certificate_generator_smtp_settings_render() {
         } else {
             echo '<input type="' . esc_attr($config['type']) . '" name="certificate_generator_settings_email[' . esc_attr($key) . ']" value="' . esc_attr($value) . '" style="width: 100%;">';
         }
-        
+
         echo '<p class="description" style="margin-top: 5px; color: #666; font-style: italic;">' . esc_html($config['desc']) . '</p>';
         echo '</div>';
     }
-    
+
     echo '<p>' . esc_html__('Note: Password is stored in plain text in the database. For better security, consider using an application-specific password.', 'certificate-generator') . '</p>';
     echo '</div>';
 }
@@ -538,8 +538,8 @@ function certificate_generator_smtp_settings_render() {
 function certificate_generator_email_render() {
     $options = get_option('certificate_generator_settings_email');
     ?>
-    <input type="email" name="certificate_generator_settings_email[email]" 
-           value="<?php echo esc_attr($options['email'] ?? ''); ?>" 
+    <input type="email" name="certificate_generator_settings_email[email]"
+           value="<?php echo esc_attr($options['email'] ?? ''); ?>"
            required>
     <?php
 }
@@ -592,17 +592,17 @@ function certificate_generator_card_styles_render() {
             'type' => 'range'
         ],
     ];
-    
+
     echo '<div class="certificate-styling-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 15px;">';
-    
+
     foreach ($fields as $field => $config) {
         $type = $config['type'] ?? 'color';
         $default = $config['default'];
         $value = $options[$field] ?? $default;
-        
+
         echo '<div class="style-option" style="background: #fff; padding: 15px; border-radius: 8px; border: 1px solid #e0e0e0;">';
         echo '<label style="display: block; margin-bottom: 8px;"><strong>' . $config['label'] . '</strong></label>';
-        
+
         if ($type === 'color') {
             echo '<div style="display: flex; align-items: center;">';
             echo '<input type="color" id="' . $field . '" name="certificate_generator_settings_email[' . $field . ']" value="' . esc_attr($value) . '" style="margin-right: 10px;">';
@@ -614,13 +614,13 @@ function certificate_generator_card_styles_render() {
             echo '<input type="number" value="' . esc_attr($value) . '" id="' . $field . '_number" style="width: 60px;" min="0" max="30">';
             echo '</div>';
         }
-        
+
         echo '<p class="description" style="margin-top: 8px; color: #666; font-style: italic;">' . $config['desc'] . '</p>';
         echo '</div>';
     }
-    
+
     echo '</div>';
-    
+
     // Add JavaScript to sync color inputs with text fields
     ?>
     <script>
@@ -629,12 +629,12 @@ function certificate_generator_card_styles_render() {
         $('input[type="color"]').on('input', function() {
             $('#' + $(this).attr('id') + '_text').val($(this).val());
         });
-        
+
         // Sync range inputs with number fields
         $('input[type="range"]').on('input', function() {
             $('#' + $(this).attr('id') + '_number').val($(this).val());
         });
-        
+
         $('input[type="number"]').on('input', function() {
             const id = $(this).attr('id').replace('_number', '');
             $('#' + id).val($(this).val());
@@ -673,7 +673,7 @@ function certificate_generator_clear_cache() {
 
     try {
         // Delete all transients
-        $wpdb->query("DELETE FROM {$wpdb->options} WHERE option_name LIKE '_transient_cert_search_%'");
+        $wpdb->query($wpdb->prepare("DELETE FROM {$wpdb->options} WHERE option_name LIKE %s", '_transient_cert_search_%'));
 
         // Delete generated certificate files
         $upload_dir = wp_upload_dir();
@@ -722,18 +722,18 @@ function certificate_generator_settings_page() {
             display: block;
         }
     </style>
-    <?php 
+    <?php
     //Get and validate current tab
     $active_tab = isset($_GET['tab']) ? sanitize_text_field($_GET['tab']) : 'general';
     $valid_tabs = array('general', 'templates', 'api', 'tools');
-    
+
     if (!in_array($active_tab, $valid_tabs)) {
         $active_tab = 'general';
     }
     ?>
     <div class="wrap">
         <h1><?php _e('Certificate Generator Settings', 'certificate-generator'); ?></h1>
-        
+
         <!-- Tab Navigation -->
         <h2 class="nav-tab-wrapper">
             <a href="?page=certificate_generator_settings&tab=general" class="nav-tab <?php echo $active_tab == 'general' ? 'nav-tab-active' : ''; ?>">
@@ -749,14 +749,14 @@ function certificate_generator_settings_page() {
                 <?php _e('Tools', 'certificate-generator'); ?>
             </a>
         </h2>
-        
+
         <?php
         // Debug information for tab content
         if (defined('WP_DEBUG') && WP_DEBUG) {
             echo '<!-- Active Tab: ' . esc_html($active_tab) . ' -->';
         }
         ?>
-        
+
         <?php if ($active_tab == 'general') : ?>
             <form action="options.php" method="post">
                 <?php
@@ -802,7 +802,7 @@ function certificate_generator_settings_page() {
                 </button>
                 <div id="clear-cache-message"></div>
             </div>
-            
+
             <!-- Email Logs Link -->
             <div style="margin-top: 30px; padding: 20px; background: #fff; border: 1px solid #ccd0d4; border-radius: 4px;">
                 <h3><?php _e('Email Logs', 'certificate-generator'); ?></h3>
@@ -848,7 +848,7 @@ function certificate_generator_settings_page() {
  */
 function certificate_generator_api_section_callback() {
     echo '<p>' . esc_html__('Configure API access for external integrations and AI agents. The API allows secure certificate generation through REST endpoints.', 'certificate-generator') . '</p>';
-    
+
     $api_enabled = get_option('certificate_generator_api_key_enabled', false);
     if ($api_enabled) {
         echo '<div class="notice notice-info inline"><p><strong>' . esc_html__('API Endpoints:', 'certificate-generator') . '</strong><br>';
@@ -874,9 +874,9 @@ function certificate_generator_api_key_enabled_render() {
 function certificate_generator_api_key_render() {
     $api_key = get_option('certificate_generator_api_key', '');
     $api_enabled = get_option('certificate_generator_api_key_enabled', false);
-    
+
     echo '<div id="api-key-section">';
-    
+
     if (empty($api_key)) {
         echo '<button type="button" id="generate-api-key" class="button button-primary">' . esc_html__('Generate API Key', 'certificate-generator') . '</button>';
         echo '<p class="description">' . esc_html__('Click to generate a secure API key for external integrations.', 'certificate-generator') . '</p>';
@@ -885,41 +885,41 @@ function certificate_generator_api_key_render() {
         echo '<input type="text" id="certificate_generator_api_key_display" value="' . esc_attr($api_key) . '" readonly style="width: 100%; max-width: 500px; font-family: monospace;" />';
         echo '<input type="hidden" id="certificate_generator_api_key" name="certificate_generator_api_key" value="' . esc_attr($api_key) . '" />';
         echo '</div>';
-        
+
         echo '<div class="api-key-actions visible" style="margin-bottom: 15px;">';
         echo '<button type="button" id="regenerate-api-key" class="button button-secondary">' . esc_html__('Regenerate', 'certificate-generator') . '</button>';
         echo '<button type="button" id="copy-api-key" class="button button-secondary" style="margin-left: 10px;">' . esc_html__('Copy', 'certificate-generator') . '</button>';
         echo '<button type="button" id="show-api-key" class="button button-secondary" style="margin-left: 10px;">' . esc_html__('Show Full Key', 'certificate-generator') . '</button>';
         echo '<button type="button" id="delete-api-key" class="button button-secondary" style="margin-left: 10px; color: #dc3232;">' . esc_html__('Delete', 'certificate-generator') . '</button>';
         echo '</div>';
-        
+
         echo '<p class="description">' . esc_html__('Keep this API key secure. It provides full access to certificate generation.', 'certificate-generator') . '</p>';
-        
+
         if ($api_enabled) {
             echo '<div class="notice notice-warning inline" style="margin-top: 10px;"><p><strong>' . esc_html__('Security Notice:', 'certificate-generator') . '</strong> ' . esc_html__('API access is currently enabled. Ensure your API key is kept secure and only shared with trusted applications.', 'certificate-generator') . '</p></div>';
         }
     }
-    
+
     echo '</div>';
-    
+
     // Add JavaScript for API key management
     ?>
     <script>
     jQuery(document).ready(function($) {
         $('#generate-api-key, #regenerate-api-key').on('click', function() {
             console.log('API key button clicked: ' + $(this).attr('id'));
-            
+
             if ($(this).attr('id') === 'regenerate-api-key') {
                 if (!confirm('<?php echo esc_js(__('Are you sure you want to regenerate the API key? This will invalidate the current key.', 'certificate-generator')); ?>')) {
                     return;
                 }
             }
-            
+
             // Generate a secure random API key
             generateSecureApiKey().then(function(apiKey) {
                 console.log('Generated API key: ' + apiKey.substring(0, 5) + '...');
                 console.log('Form exists: ' + ($('form#certificate_generator_settings').length > 0 ? 'Yes' : 'No'));
-                
+
                 // Save the API key via AJAX first
                 console.log('Sending AJAX request to save API key');
                 $.ajax({
@@ -932,21 +932,21 @@ function certificate_generator_api_key_render() {
                     },
                     success: function(response) {
                         console.log('AJAX response:', response);
-                        
+
                         if (response.success) {
                             // Update the UI only after successful save
                             $('#certificate_generator_api_key').val(apiKey);
                             $('#certificate_generator_api_key_display').val(apiKey);
                             $('#generate-api-key').hide();
                             $('.api-key-container, .api-key-actions').show();
-                            
+
                             // Enable API access by default when generating new key
                             $('#certificate_generator_api_key_enabled').prop('checked', true);
                             console.log('API access checkbox checked');
-                            
+
                             // Save settings and reload
                             alert('<?php echo esc_js(__('API key generated successfully! The page will now reload.', 'certificate-generator')); ?>');
-                            
+
                             console.log('Reloading page in 500ms to reflect changes');
                             setTimeout(function() {
                                 location.reload();
@@ -961,11 +961,11 @@ function certificate_generator_api_key_render() {
                 });
             });
         });
-        
+
         $('#show-api-key').on('click', function() {
             const $input = $('#certificate_generator_api_key_display');
             const fullKey = $('#certificate_generator_api_key').val();
-            
+
             if ($(this).text() === '<?php echo esc_js(__('Show Full Key', 'certificate-generator')); ?>') {
                 $input.val(fullKey);
                 $(this).text('<?php echo esc_js(__('Hide Key', 'certificate-generator')); ?>');
@@ -974,18 +974,18 @@ function certificate_generator_api_key_render() {
                 $(this).text('<?php echo esc_js(__('Show Full Key', 'certificate-generator')); ?>');
             }
         });
-        
+
         // Initialize key display with masked version
         if ($('#certificate_generator_api_key').val()) {
             const fullKey = $('#certificate_generator_api_key').val();
             $('#certificate_generator_api_key_display').val(fullKey);
         }
-        
+
         $('#copy-api-key').on('click', function() {
              const apiKey = $('#certificate_generator_api_key').val();
              const $button = $(this);
              const originalText = $button.text();
-             
+
              navigator.clipboard.writeText(apiKey).then(function() {
                  $button.text('<?php echo esc_js(__('Copied!', 'certificate-generator')); ?>');
                  setTimeout(function() {
@@ -1005,13 +1005,13 @@ function certificate_generator_api_key_render() {
                  }, 2000);
              });
          });
-         
+
          // Delete API key handler
          $('#delete-api-key').on('click', function() {
              if (!confirm('<?php echo esc_js(__('Are you sure you want to delete the API key? This will permanently remove the key and disable API access.', 'certificate-generator')); ?>')) {
                  return;
              }
-             
+
              console.log('Deleting API key');
              $.ajax({
                  url: ajaxurl,
@@ -1022,19 +1022,19 @@ function certificate_generator_api_key_render() {
                  },
                  success: function(response) {
                      console.log('Delete AJAX response:', response);
-                     
+
                      if (response.success) {
                          // Clear the UI
                          $('#certificate_generator_api_key').val('');
                          $('#certificate_generator_api_key_display').val('');
                          $('.api-key-container, .api-key-actions').hide().removeClass('visible');
                          $('#generate-api-key').show();
-                         
+
                          // Disable API access checkbox
                          $('#certificate_generator_api_key_enabled').prop('checked', false);
-                         
+
                          alert('<?php echo esc_js(__('API key deleted successfully! The page will now reload.', 'certificate-generator')); ?>');
-                         
+
                          // Reload page to reflect changes
                          setTimeout(function() {
                              location.reload();
@@ -1048,7 +1048,7 @@ function certificate_generator_api_key_render() {
                  }
              });
          });
-         
+
          // Show API key containers if key exists
         if ($('#certificate_generator_api_key').val()) {
             $('.api-key-container, .api-key-actions').addClass('visible');
@@ -1070,17 +1070,53 @@ function certificate_generator_api_key_render() {
 }
 
 /**
- * Check if WP Mail SMTP plugin is active
+ * Check if WP Mail SMTP plugin is active AND properly configured
  *
- * @return bool Whether WP Mail SMTP is active
+ * @return bool Whether WP Mail SMTP is active and configured
  */
 function certificate_generator_is_wp_mail_smtp_active() {
     // Make sure the function exists before using it
     if (!function_exists('is_plugin_active')) {
         include_once ABSPATH . 'wp-admin/includes/plugin.php';
     }
-    
-    return is_plugin_active('wp-mail-smtp/wp_mail_smtp.php') || is_plugin_active('wp-mail-smtp-pro/wp_mail_smtp.php');
+
+    // Check if plugin is active
+    $is_active = is_plugin_active('wp-mail-smtp/wp_mail_smtp.php') ||
+                 is_plugin_active('wp-mail-smtp-pro/wp_mail_smtp.php');
+
+    if (!$is_active) {
+        error_log('Certificate Generator: WP Mail SMTP plugin is not active');
+        return false;
+    }
+
+    // Check if WP Mail SMTP is properly configured
+    // Method 1: Check WP Mail SMTP Free version
+    if (function_exists('wp_mail_smtp')) {
+        $options = get_option('wp_mail_smtp', []);
+
+        // Check if a mailer is configured (not 'mail')
+        if (isset($options['mail']['mailer']) && $options['mail']['mailer'] !== 'mail') {
+            error_log('Certificate Generator: WP Mail SMTP is active and configured with mailer: ' . $options['mail']['mailer']);
+            return true;
+        }
+    }
+
+    // Method 2: Check WP Mail SMTP Pro version
+    if (class_exists('WPMailSMTP\\Options')) {
+        try {
+            $mailer = \WPMailSMTP\Options::init()->get('mail', 'mailer');
+            if ($mailer && $mailer !== 'mail') {
+                error_log('Certificate Generator: WP Mail SMTP Pro is active and configured with mailer: ' . $mailer);
+                return true;
+            }
+        } catch (Exception $e) {
+            error_log('Certificate Generator: Error checking WP Mail SMTP Pro configuration: ' . $e->getMessage());
+        }
+    }
+
+    // Plugin is active but not properly configured
+    error_log('Certificate Generator: WP Mail SMTP is active but NOT properly configured. Mailer is set to default PHP mail()');
+    return false;
 }
 
 /**
@@ -1099,19 +1135,19 @@ function certificate_generator_api_debug_dashboard() {
 
     // Get raw database values
     global $wpdb;
-    $api_key_raw = $wpdb->get_var("SELECT option_value FROM {$wpdb->options} WHERE option_name = 'certificate_generator_api_key'");
-    $api_enabled_raw = $wpdb->get_var("SELECT option_value FROM {$wpdb->options} WHERE option_name = 'certificate_generator_api_key_enabled'");
+    $api_key_raw = $wpdb->get_var($wpdb->prepare("SELECT option_value FROM {$wpdb->options} WHERE option_name = %s", 'certificate_generator_api_key'));
+    $api_enabled_raw = $wpdb->get_var($wpdb->prepare("SELECT option_value FROM {$wpdb->options} WHERE option_name = %s", 'certificate_generator_api_key_enabled'));
 
     ob_start();
     ?>
     <div class="wrap">
         <h1>API Debug Dashboard</h1>
         <p>This dashboard provides a central location for all API debugging tools and information.</p>
-        
+
         <div class="notice notice-warning">
             <p><strong>Warning:</strong> These debug tools are for development and troubleshooting purposes only. They should be removed in production environments.</p>
         </div>
-        
+
         <h2>API Status Overview</h2>
         <div class="dashboard-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); grid-gap: 20px;">
             <div class="postbox">
@@ -1126,7 +1162,7 @@ function certificate_generator_api_debug_dashboard() {
                     <p><a href="<?php echo esc_url(admin_url('options-general.php?page=certificate_generator_settings&tab=api')); ?>" class="button button-secondary">Configure</a></p>
                 </div>
             </div>
-            
+
             <div class="postbox">
                 <h3 class="hndle">API Key</h3>
                 <div class="inside">
@@ -1140,13 +1176,13 @@ function certificate_generator_api_debug_dashboard() {
                     <p><a href="<?php echo esc_url(admin_url('options-general.php?page=certificate_generator_settings&tab=api')); ?>" class="button button-secondary">Manage Key</a></p>
                 </div>
             </div>
-            
+
             <div class="postbox">
                 <h3 class="hndle">REST API</h3>
                 <div class="inside">
-                    <?php 
+                    <?php
                     $rest_available = site_url('/wp-json/') ? true : false;
-                    if ($rest_available): 
+                    if ($rest_available):
                     ?>
                         <p><span class="dashicons dashicons-yes-alt" style="color: #46b450;"></span> <strong>Available</strong></p>
                         <p>REST API is properly configured.</p>
@@ -1156,13 +1192,13 @@ function certificate_generator_api_debug_dashboard() {
                     <?php endif; ?>
                 </div>
             </div>
-            
+
             <div class="postbox">
                 <h3 class="hndle">Database Status</h3>
                 <div class="inside">
-                    <?php 
+                    <?php
                     $db_status_ok = ($api_key_raw !== null && ($api_enabled_raw !== null || $api_enabled_raw === '0'));
-                    if ($db_status_ok): 
+                    if ($db_status_ok):
                     ?>
                         <p><span class="dashicons dashicons-yes-alt" style="color: #46b450;"></span> <strong>OK</strong></p>
                         <p>Database options are properly stored.</p>
@@ -1173,7 +1209,7 @@ function certificate_generator_api_debug_dashboard() {
                 </div>
             </div>
         </div>
-        
+
         <div class="postbox">
             <h3 class="hndle">API Settings Details</h3>
             <div class="inside">
@@ -1208,7 +1244,7 @@ function certificate_generator_api_debug_dashboard() {
                 </table>
             </div>
         </div>
-        
+
         <div class="postbox">
             <h3 class="hndle">API Endpoints</h3>
             <div class="inside">
@@ -1235,7 +1271,7 @@ function certificate_generator_api_debug_dashboard() {
                 </table>
             </div>
         </div>
-        
+
         <div class="postbox">
             <h3 class="hndle">Troubleshooting Information</h3>
             <div class="inside">
@@ -1246,12 +1282,12 @@ function certificate_generator_api_debug_dashboard() {
                     <li><strong>API Access Not Working:</strong> Ensure that both the API key is generated and API access is enabled.</li>
                     <li><strong>REST API Errors:</strong> Check for security plugins that might be blocking REST API access.</li>
                 </ol>
-                
+
                 <h4>JavaScript Console Commands</h4>
                 <p>You can use these commands in your browser's developer console to debug API key issues:</p>
                 <pre style="background: #f5f5f5; padding: 15px; border: 1px solid #ddd; border-radius: 3px; overflow: auto; max-height: 400px;">
                     // Check if API key field exists
-                    
+
 
                     // Check if API key enabled field exists
                     console.log('API Key Enabled Field:', document.getElementById('certificate_generator_api_key_enabled'));
@@ -1268,7 +1304,7 @@ function certificate_generator_api_debug_dashboard() {
                     }
                     generateTestKey();
                 </pre>
-                            
+
                 <h4>PHP Debugging</h4>
                 <p>Add this code to your theme's functions.php file for additional debugging:</p>
                 <pre style="background: #f5f5f5; padding: 15px; border: 1px solid #ddd; border-radius: 3px; overflow: auto; max-height: 400px;">
@@ -1288,6 +1324,4 @@ function certificate_generator_api_debug_dashboard() {
     <?php
     return ob_get_clean();
 }
-
 ?>
-

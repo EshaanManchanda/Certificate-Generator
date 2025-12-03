@@ -82,9 +82,9 @@ add_action('add_meta_boxes', 'add_email_status_meta_box');
 function render_email_status_meta_box($post) {
     $email = get_post_meta($post->ID, 'email', true);
     $certificate_type = get_post_meta($post->ID, 'certificate_type', true);
-    
+
     echo '<div class="email-status-container">';
-    
+
     if (empty($email)) {
         echo '<div class="email-status-item no-email">';
         echo '<span class="dashicons dashicons-warning"></span>';
@@ -94,12 +94,12 @@ function render_email_status_meta_box($post) {
     } else {
         // Check if email was already sent
         $email_sent = certificate_generator_email_already_sent($post->ID, $email);
-        
+
         echo '<div class="email-status-item">';
         echo '<label><strong>' . __('Email Address:', 'certificate-generator') . '</strong></label>';
         echo '<span class="status-value">' . esc_html($email) . '</span>';
         echo '</div>';
-        
+
         echo '<div class="email-status-item">';
         echo '<label><strong>' . __('Email Status:', 'certificate-generator') . '</strong></label>';
         if ($email_sent) {
@@ -114,7 +114,7 @@ function render_email_status_meta_box($post) {
             echo '</span>';
         }
         echo '</div>';
-        
+
         // Check certificate template
         if (!empty($certificate_type)) {
             // Check if template exists
@@ -129,7 +129,7 @@ function render_email_status_meta_box($post) {
                     ]
                 ]
             ]);
-            
+
             echo '<div class="email-status-item">';
             echo '<label><strong>' . __('Certificate Template:', 'certificate-generator') . '</strong></label>';
             if ($template_query->have_posts()) {
@@ -145,7 +145,7 @@ function render_email_status_meta_box($post) {
             }
             echo '</div>';
         }
-        
+
         // Add send email button
         if (!$email_sent) {
             echo '<div class="email-actions">';
@@ -156,75 +156,75 @@ function render_email_status_meta_box($post) {
             echo '</div>';
         }
     }
-    
+
     echo '</div>';
-    
+
     // Add inline styles
     echo '<style>
         .email-status-container {
             font-size: 13px;
         }
-        
+
         .email-status-item {
             margin-bottom: 12px;
             display: flex;
             align-items: flex-start;
             gap: 8px;
         }
-        
+
         .email-status-item.no-email {
             color: #d63638;
             align-items: center;
         }
-        
+
         .email-status-item label {
             min-width: 80px;
             font-weight: 600;
             margin: 0;
         }
-        
+
         .status-value {
             flex: 1;
             display: flex;
             align-items: center;
             gap: 4px;
         }
-        
+
         .status-value.sent {
             color: #46b450;
         }
-        
+
         .status-value.pending {
             color: #ffba00;
         }
-        
+
         .status-value.template-found {
             color: #46b450;
         }
-        
+
         .status-value.template-missing {
             color: #d63638;
         }
-        
+
         .email-actions {
             margin-top: 15px;
             padding-top: 15px;
             border-top: 1px solid #ddd;
         }
-        
+
         .individual-email-status {
             display: block;
             margin-top: 8px;
             font-size: 12px;
         }
-        
+
         .dashicons {
             width: 16px;
             height: 16px;
             font-size: 16px;
         }
     </style>';
-    
+
     // Add JavaScript for individual email sending
     echo '<script>
         jQuery(document).ready(function($) {
@@ -232,10 +232,10 @@ function render_email_status_meta_box($post) {
                 var button = $(this);
                 var postId = button.data("post-id");
                 var statusSpan = $(".individual-email-status");
-                
+
                 button.prop("disabled", true);
                 statusSpan.html("<span class=\"spinner is-active\" style=\"float: none; margin: 0;\"></span> Sending...");
-                
+
                 $.ajax({
                     url: ajaxurl,
                     type: "POST",
@@ -273,9 +273,9 @@ function render_certificate_email_logs($post) {
         'per_page' => 10,
         'cert_id' => $post->ID
     ]);
-    
+
     $logs = $logs_data['logs'];
-    
+
     // Add inline styles
     echo '<style>
         #certificate_email_logs_meta_box .inside {
@@ -305,7 +305,7 @@ function render_certificate_email_logs($post) {
         echo '<p>' . esc_html__('No email logs found for this certificate.', 'certificate-generator') . '</p>';
         return;
     }
-    
+
     echo '<table class="widefat fixed striped">';
     echo '<thead><tr>';
     echo '<th>' . esc_html__('Date', 'certificate-generator') . '</th>';
@@ -313,7 +313,7 @@ function render_certificate_email_logs($post) {
     echo '<th>' . esc_html__('Status', 'certificate-generator') . '</th>';
     echo '<th>' . esc_html__('Details', 'certificate-generator') . '</th>';
     echo '</tr></thead>';
-    
+
     foreach ($logs as $log) {
         echo '<tr>';
         echo '<td>' . esc_html(date_i18n(get_option('date_format') . ' ' . get_option('time_format'), strtotime($log->sent_at))) . '</td>';
@@ -328,7 +328,7 @@ function render_certificate_email_logs($post) {
         echo '</td>';
         echo '</tr>';
     }
-    
+
     echo '</table>';
     echo '<p><a href="' . esc_url(admin_url('admin.php?page=certificate-email-logs')) . '" class="button">' . esc_html__('View All Logs', 'certificate-generator') . '</a></p>';
 }
@@ -343,8 +343,7 @@ function render_students_form($post)
     $school_name = get_post_meta($post->ID, 'school_name', true);
     $issue_date = get_post_meta($post->ID, 'issue_date', true);
     $certificate_type = get_post_meta($post->ID, 'certificate_type', true);
-
-?>
+    ?>
     <div class="custom-form-wrap">
         <div class="custom-form-group">
             <label for="student_name">Student Name:</label>
@@ -371,7 +370,7 @@ function render_students_form($post)
                 value="<?php echo esc_attr($certificate_type); ?>" class="custom-form-input">
         </div>
     </div>
-<?php
+    <?php
 }
 
 // Add Meta Box for Students Post Type
@@ -455,8 +454,7 @@ function render_teachers_form($post)
     $school_abbreviation = get_post_meta($post->ID, 'school_abbreviation', true);
     $issue_date = get_post_meta($post->ID, 'issue_date', true);
     $certificate_type = get_post_meta($post->ID, 'certificate_type', true);
-
-?>
+    ?>
     <div class="custom-form-wrap">
         <div class="custom-form-group">
             <label for="teacher_name">Teacher Name:</label>
@@ -488,7 +486,7 @@ function render_teachers_form($post)
                 value="<?php echo esc_attr($certificate_type); ?>" class="custom-form-input">
         </div>
     </div>
-<?php
+    <?php
 }
 
 // Add Meta Box for Teachers Post Type
@@ -577,8 +575,7 @@ function render_schools_form($post)
     $place = get_post_meta($post->ID, 'place', true);
     $issue_date = get_post_meta($post->ID, 'issue_date', true);
     $certificate_type = get_post_meta($post->ID, 'certificate_type', true);
-
-?>
+    ?>
     <div class="custom-form-wrap">
         <div class="custom-form-group">
             <label for="school_name">School Name:</label>
@@ -605,7 +602,7 @@ function render_schools_form($post)
                 value="<?php echo esc_attr($certificate_type); ?>" class="custom-form-input">
         </div>
     </div>
-<?php
+    <?php
 }
 
 // Add Meta Box for Schools Post Type
@@ -689,7 +686,7 @@ function render_certificates_form($post)
     $template_orientation = get_post_meta($post->ID, 'template_orientation', true);
     $font_size = get_post_meta($post->ID, 'font_size', true) ?: '12'; // Default font size
     $font_color = get_post_meta($post->ID, 'font_color', true) ?: '#000000'; // Default black color
-    
+
     // Get FontManager instance and available fonts
     $font_manager = CertificateGenerator_FontManager::getInstance();
     $font_options = $font_manager->get_font_options();
@@ -697,8 +694,7 @@ function render_certificates_form($post)
     // Set paper sizes based on orientation
     $paper_size = ($template_orientation == 'landscape') ? "Landscape (297mm x 210mm)" : "Portrait (210mm x 297mm)";
     $width = get_post_meta($post->ID, 'width', true) ?: '210'; // Default width
-
-?>
+    ?>
     <div class="custom-form-wrap">
         <h2>Certificate Configuration</h2>
         <p><strong>Paper Size:</strong> <?php echo esc_html($paper_size); ?></p>
@@ -741,7 +737,7 @@ function render_certificates_form($post)
         <div class="custom-form-group">
             <label for="font_style"><strong>Font Style:</strong></label>
             <div class="font-search-wrapper">
-                <input type="text" id="font_search" placeholder="Search fonts..." class="custom-form-input font-search-input" 
+                <input type="text" id="font_search" placeholder="Search fonts..." class="custom-form-input font-search-input"
                        style="margin-bottom: 8px; width: 100%;">
                 <select id="font_style" name="font_style" class="custom-form-input font-select">
                     <?php foreach ($font_options as $font_key => $font_name): ?>
@@ -760,32 +756,32 @@ function render_certificates_form($post)
         .font-search-wrapper {
             position: relative;
         }
-        
+
         .font-search-input {
             border: 1px solid #ddd;
             border-radius: 4px;
             padding: 8px;
         }
-        
+
         .font-select {
             max-height: 200px;
             overflow-y: auto;
         }
-        
+
         .font-preview {
             border-radius: 4px;
             font-weight: normal;
             color: #333;
             transition: all 0.3s ease;
         }
-        
+
         .font-search-no-results {
             padding: 8px;
             color: #666;
             font-style: italic;
             text-align: center;
         }
-        
+
         .font-category-group {
             background: #f0f0f0;
             font-weight: bold;
@@ -801,16 +797,16 @@ function render_certificates_form($post)
             const searchInput = document.getElementById('font_search');
             const fontSelect = document.getElementById('font_style');
             const fontPreview = document.querySelector('.font-preview');
-            
+
             if (!searchInput || !fontSelect || !fontPreview) return;
-            
+
             // Store original options
             const originalOptions = Array.from(fontSelect.options).map(option => ({
                 value: option.value,
                 text: option.textContent,
                 selected: option.selected
             }));
-            
+
             // Font categories for better organization
             const fontCategories = {
                 'sans': ['opensans', 'poppins', 'lato', 'helvetica', 'arial', 'roboto', 'montserrat'],
@@ -818,7 +814,7 @@ function render_certificates_form($post)
                 'script': ['greatvibes', 'pacifico', 'lobster', 'dancingscript', 'satisfy'],
                 'display': ['bebasneue', 'oswald', 'anton', 'impact']
             };
-            
+
             function getCategoryForFont(fontKey) {
                 for (const [category, fonts] of Object.entries(fontCategories)) {
                     if (fonts.some(font => fontKey.toLowerCase().includes(font))) {
@@ -827,11 +823,11 @@ function render_certificates_form($post)
                 }
                 return 'other';
             }
-            
+
             function updateFontPreview() {
                 const selectedFont = fontSelect.value;
                 const selectedText = fontSelect.options[fontSelect.selectedIndex]?.text || 'Font Preview';
-                
+
                 // Update preview text
                 fontPreview.innerHTML = `
                     <div style="font-size: 16px; margin-bottom: 4px;">
@@ -841,38 +837,38 @@ function render_certificates_form($post)
                         The quick brown fox jumps over the lazy dog
                     </div>
                 `;
-                
+
                 // Add category badge
                 const category = getCategoryForFont(selectedFont);
                 const categoryColors = {
                     'sans': '#2196F3',
-                    'serif': '#8B4513', 
+                    'serif': '#8B4513',
                     'script': '#E91E63',
                     'display': '#FF9800',
                     'other': '#9E9E9E'
                 };
-                
+
                 const categoryBadge = `
-                    <span style="display: inline-block; background: ${categoryColors[category]}; 
-                                 color: white; padding: 2px 6px; border-radius: 3px; font-size: 10px; 
+                    <span style="display: inline-block; background: ${categoryColors[category]};
+                                 color: white; padding: 2px 6px; border-radius: 3px; font-size: 10px;
                                  text-transform: uppercase; margin-left: 8px;">
                         ${category}
                     </span>
                 `;
-                
+
                 fontPreview.querySelector('div').innerHTML += categoryBadge;
             }
-            
+
             function filterFonts() {
                 const searchTerm = searchInput.value.toLowerCase();
-                
+
                 // Clear current options
                 fontSelect.innerHTML = '';
-                
+
                 if (searchTerm === '') {
                     // Show all fonts organized by category
                     const categorizedFonts = {};
-                    
+
                     originalOptions.forEach(option => {
                         const category = getCategoryForFont(option.value);
                         if (!categorizedFonts[category]) {
@@ -880,24 +876,24 @@ function render_certificates_form($post)
                         }
                         categorizedFonts[category].push(option);
                     });
-                    
+
                     // Add fonts by category
                     const categoryOrder = ['sans', 'serif', 'script', 'display', 'other'];
                     const categoryNames = {
                         'sans': 'Sans-Serif Fonts',
-                        'serif': 'Serif Fonts', 
+                        'serif': 'Serif Fonts',
                         'script': 'Script Fonts',
                         'display': 'Display Fonts',
                         'other': 'Other Fonts'
                     };
-                    
+
                     categoryOrder.forEach(category => {
                         if (categorizedFonts[category] && categorizedFonts[category].length > 0) {
                             // Add category header
                             const categoryGroup = document.createElement('optgroup');
                             categoryGroup.label = categoryNames[category] || category;
                             fontSelect.appendChild(categoryGroup);
-                            
+
                             categorizedFonts[category].forEach(option => {
                                 const newOption = document.createElement('option');
                                 newOption.value = option.value;
@@ -909,11 +905,11 @@ function render_certificates_form($post)
                     });
                 } else {
                     // Filter fonts based on search
-                    const filteredOptions = originalOptions.filter(option => 
+                    const filteredOptions = originalOptions.filter(option =>
                         option.text.toLowerCase().includes(searchTerm) ||
                         option.value.toLowerCase().includes(searchTerm)
                     );
-                    
+
                     if (filteredOptions.length === 0) {
                         const noResults = document.createElement('option');
                         noResults.textContent = 'No fonts found';
@@ -929,18 +925,18 @@ function render_certificates_form($post)
                         });
                     }
                 }
-                
+
                 updateFontPreview();
             }
-            
+
             // Event listeners
             searchInput.addEventListener('input', filterFonts);
             fontSelect.addEventListener('change', updateFontPreview);
-            
+
             // Initialize
             filterFonts();
             updateFontPreview();
-            
+
             // Add keyboard navigation
             searchInput.addEventListener('keydown', function(e) {
                 if (e.key === 'ArrowDown') {
@@ -964,7 +960,6 @@ function render_certificates_form($post)
         <h3>Field Positioning (Based on Selected Orientation)</h3>
         <p><strong>Note:</strong> Adjust X & Y positions based on the paper size above.</p>
 
-
         <?php
 
         for ($i = 1; $i <= 3; $i++) {
@@ -973,8 +968,7 @@ function render_certificates_form($post)
             $visibility = get_post_meta($post->ID, "field_{$i}_visible", true) ?: '0';
             $field_width = get_post_meta($post->ID, "field_{$i}_width", true) ?: '100'; // Default width
             $alignment = get_post_meta($post->ID, "field_{$i}_alignment", true) ?: 'C'; // Default center alignment
-
-        ?>
+            ?>
             <div class="custom-form-wrap">
                 <h4>Field <?php echo $i; ?></h4>
                 <div class="custom-form-group">
@@ -1010,11 +1004,11 @@ function render_certificates_form($post)
                     </select>
                 </div>
             </div>
-        <?php
+            <?php
         }
         ?>
     </div>
-<?php
+    <?php
 }
 
 // Add Meta Box for Certificates Post Type
@@ -1441,7 +1435,4 @@ function render_custom_post_admin_page()
     echo '</form>';
     echo '</div>';
 }
-
-
-
 ?>

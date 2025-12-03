@@ -30,7 +30,7 @@ function certificate_generator_email_logs_page() {
         certificate_generator_delete_email_logs($_POST['log_ids']);
         echo '<div class="notice notice-success"><p>' . __('Selected logs deleted successfully.', 'certificate-generator') . '</p></div>';
     }
-    
+
     // Get filter parameters
     $current_page = isset($_GET['paged']) ? max(1, intval($_GET['paged'])) : 1;
     $per_page = 20;
@@ -39,7 +39,7 @@ function certificate_generator_email_logs_page() {
     $search = isset($_GET['s']) ? sanitize_text_field($_GET['s']) : '';
     $date_from = isset($_GET['date_from']) ? sanitize_text_field($_GET['date_from']) : '';
     $date_to = isset($_GET['date_to']) ? sanitize_text_field($_GET['date_to']) : '';
-    
+
     // Get logs
     $logs_data = certificate_generator_get_email_logs([
         'page' => $current_page,
@@ -50,18 +50,18 @@ function certificate_generator_email_logs_page() {
         'date_from' => $date_from,
         'date_to' => $date_to
     ]);
-    
+
     $logs = $logs_data['logs'];
     $total_pages = $logs_data['pages'];
     $total_count = $logs_data['total'];
-    
+
     // Get statistics
     $stats = certificate_generator_get_email_stats();
-    
+
     ?>
     <div class="wrap">
         <h1><?php _e('Certificate Email Logs', 'certificate-generator'); ?></h1>
-        
+
         <!-- Statistics Cards -->
         <div class="email-stats" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin: 20px 0;">
             <div class="stat-card" style="background: #fff; padding: 20px; border-radius: 8px; border: 1px solid #e0e0e0; text-align: center;">
@@ -89,47 +89,47 @@ function certificate_generator_email_logs_page() {
                 <p style="margin: 0; color: #7f8c8d;"><?php _e('This Month', 'certificate-generator'); ?></p>
             </div>
         </div>
-        
+
         <!-- Filters -->
         <div class="tablenav top">
             <form method="get" style="display: inline-block;">
                 <input type="hidden" name="page" value="certificate-email-logs">
-                
+
                 <select name="post_type">
                     <option value=""><?php _e('All Post Types', 'certificate-generator'); ?></option>
                     <option value="students" <?php selected($post_type_filter, 'students'); ?>><?php _e('Students', 'certificate-generator'); ?></option>
                     <option value="teachers" <?php selected($post_type_filter, 'teachers'); ?>><?php _e('Teachers', 'certificate-generator'); ?></option>
                     <option value="schools" <?php selected($post_type_filter, 'schools'); ?>><?php _e('Schools', 'certificate-generator'); ?></option>
                 </select>
-                
+
                 <select name="status">
                     <option value=""><?php _e('All Statuses', 'certificate-generator'); ?></option>
                     <option value="sent" <?php selected($status_filter, 'sent'); ?>><?php _e('Sent', 'certificate-generator'); ?></option>
                     <option value="failed" <?php selected($status_filter, 'failed'); ?>><?php _e('Failed', 'certificate-generator'); ?></option>
                 </select>
-                
+
                 <input type="date" name="date_from" value="<?php echo esc_attr($date_from); ?>" placeholder="<?php _e('From Date', 'certificate-generator'); ?>">
                 <input type="date" name="date_to" value="<?php echo esc_attr($date_to); ?>" placeholder="<?php _e('To Date', 'certificate-generator'); ?>">
-                
+
                 <input type="text" name="s" value="<?php echo esc_attr($search); ?>" placeholder="<?php _e('Search email or name...', 'certificate-generator'); ?>">
-                
+
                 <input type="submit" class="button" value="<?php _e('Filter', 'certificate-generator'); ?>">
-                
+
                 <?php if ($post_type_filter || $status_filter || $search || $date_from || $date_to): ?>
                     <a href="<?php echo admin_url('edit.php?post_type=certificates&page=certificate-email-logs'); ?>" class="button"><?php _e('Clear Filters', 'certificate-generator'); ?></a>
                 <?php endif; ?>
             </form>
-            
+
             <div class="alignright">
                 <a href="<?php echo wp_nonce_url(admin_url('edit.php?post_type=certificates&page=certificate-email-logs&action=export'), 'export_logs'); ?>" class="button"><?php _e('Export CSV', 'certificate-generator'); ?></a>
             </div>
         </div>
-        
+
         <!-- Logs Table -->
         <form method="post">
             <?php wp_nonce_field('bulk_delete_logs'); ?>
             <input type="hidden" name="action" value="delete_logs">
-            
+
             <table class="wp-list-table widefat fixed striped">
                 <thead>
                     <tr>
@@ -183,9 +183,9 @@ function certificate_generator_email_logs_page() {
                                     <?php endif; ?>
                                 </td>
                                 <td>
-                                    <a href="<?php echo admin_url('post.php?post=' . $log->cert_id . '&action=edit'); ?>" class="button button-small"><?php _e('View Certificate', 'certificate-generator'); ?></a>
+                                    <a href="<?php echo admin_url('post.php?post=' . $log->certificate_id . '&action=edit'); ?>" class="button button-small"><?php _e('View Certificate', 'certificate-generator'); ?></a>
                                     <?php if ($log->status === 'failed'): ?>
-                                        <button type="button" class="button button-small resend-email" data-post-id="<?php echo esc_attr($log->cert_id); ?>"><?php _e('Resend', 'certificate-generator'); ?></button>
+                                        <button type="button" class="button button-small resend-email" data-post-id="<?php echo esc_attr($log->certificate_id); ?>"><?php _e('Resend', 'certificate-generator'); ?></button>
                                     <?php endif; ?>
                                 </td>
                             </tr>
@@ -193,13 +193,13 @@ function certificate_generator_email_logs_page() {
                     <?php endif; ?>
                 </tbody>
             </table>
-            
+
             <?php if (!empty($logs)): ?>
                 <div class="tablenav bottom">
                     <div class="alignleft actions">
                         <input type="submit" class="button action" value="<?php _e('Delete Selected', 'certificate-generator'); ?>" onclick="return confirm('<?php _e('Are you sure you want to delete the selected logs?', 'certificate-generator'); ?>')">
                     </div>
-                    
+
                     <?php
                     // Pagination
                     if ($total_pages > 1) {
@@ -220,21 +220,21 @@ function certificate_generator_email_logs_page() {
             <?php endif; ?>
         </form>
     </div>
-    
+
     <script>
     jQuery(document).ready(function($) {
         // Select all checkbox functionality
         $('#cb-select-all-1').on('change', function() {
             $('input[name="log_ids[]"]').prop('checked', this.checked);
         });
-        
+
         // Resend email functionality
         $('.resend-email').on('click', function() {
             var button = $(this);
             var postId = button.data('post-id');
-            
+
             button.prop('disabled', true).text('<?php _e('Sending...', 'certificate-generator'); ?>');
-            
+
             $.ajax({
                 url: ajaxurl,
                 type: 'POST',
@@ -270,7 +270,7 @@ add_action('admin_init', 'certificate_generator_handle_export_logs');
 function certificate_generator_handle_export_logs() {
     if (isset($_GET['action']) && $_GET['action'] === 'export' && isset($_GET['page']) && $_GET['page'] === 'certificate-email-logs') {
         check_admin_referer('export_logs');
-        
+
         // Get all logs for export
         $logs_data = certificate_generator_get_email_logs([
             'per_page' => -1,
@@ -280,16 +280,16 @@ function certificate_generator_handle_export_logs() {
             'date_from' => isset($_GET['date_from']) ? sanitize_text_field($_GET['date_from']) : '',
             'date_to' => isset($_GET['date_to']) ? sanitize_text_field($_GET['date_to']) : ''
         ]);
-        
+
         $logs = $logs_data['logs'];
-        
+
         // Set headers for CSV download
         header('Content-Type: text/csv');
         header('Content-Disposition: attachment; filename="certificate-email-logs-' . date('Y-m-d') . '.csv"');
-        
+
         // Create CSV output
         $output = fopen('php://output', 'w');
-        
+
         // CSV headers
         fputcsv($output, [
             'Date',
@@ -301,7 +301,7 @@ function certificate_generator_handle_export_logs() {
             'Status',
             'Error Message'
         ]);
-        
+
         // CSV data
         foreach ($logs as $log) {
             fputcsv($output, [
@@ -315,7 +315,7 @@ function certificate_generator_handle_export_logs() {
                 $log->error_message
             ]);
         }
-        
+
         fclose($output);
         exit;
     }
@@ -324,15 +324,15 @@ function certificate_generator_handle_export_logs() {
 // Delete email logs
 function certificate_generator_delete_email_logs($log_ids) {
     global $wpdb;
-    
+
     if (empty($log_ids) || !is_array($log_ids)) {
         return false;
     }
-    
+
     $table_name = $wpdb->prefix . 'cert_email_logs';
     $log_ids = array_map('intval', $log_ids);
     $placeholders = implode(',', array_fill(0, count($log_ids), '%d'));
-    
+
     return $wpdb->query($wpdb->prepare(
         "DELETE FROM $table_name WHERE id IN ($placeholders)",
         $log_ids
@@ -346,29 +346,30 @@ function certificate_generator_handle_single_email_resend() {
     if (!wp_verify_nonce($_POST['nonce'], 'certificate_generator_send_email')) {
         wp_die('Security check failed');
     }
-    
+
     // Check permissions
     // if (!current_user_can('manage_options')) {
     //     wp_die('Insufficient permissions');
     // }
-    
+
     $post_id = intval($_POST['post_id']);
-    
+
     if (!$post_id) {
         wp_send_json_error(['message' => 'Invalid post ID']);
     }
-    
+
     // Include email functions if not already loaded
     if (!function_exists('certificate_generator_send_email')) {
         require_once plugin_dir_path(__FILE__) . 'email-functions.php';
     }
-    
+
     // Send the email
     $result = certificate_generator_send_email($post_id, true);
-    
+
     if ($result) {
         wp_send_json_success(['message' => 'Email sent successfully']);
     } else {
         wp_send_json_error(['message' => 'Failed to send email']);
     }
 }
+?>

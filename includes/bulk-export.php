@@ -387,7 +387,4 @@ function bulk_export_certificates() {
     }
 }
 add_action('admin_init', 'bulk_export_certificates');
-
-
-
 ?>

@@ -1,5 +1,7 @@
 (function ($) {
   $(document).ready(function () {
-    console.log("Custom admin JS loaded");
+    if (window.CERT_GEN_DEBUG) {
+      console.log("Custom admin JS loaded");
+    }
   });
 })(jQuery);

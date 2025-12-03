@@ -1,7 +1,16 @@
 {
   "permissions": {
     "allow": [
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(grep:*)",
+      "Bash(for font in opensans poppins \"times new roman\" \"times new roman bold italic\" \"times new roman italic\" timesb timesbi timesi)",
+      "Bash(do if [ -f \"$font.php\" ])",
+      "Bash([ ! -f \"$font.z\" ])",
+      "Bash(then echo \"  $font.php (missing .z)\")",
+      "Bash(fi)",
+      "Bash(done)",
+      "Bash(php -i:*)",
+      "Bash(cd:*)"
     ],
     "deny": [],
     "ask": []

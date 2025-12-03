@@ -1,10 +1,10 @@
 <?php
 /**
  * Certificate Generator API Endpoints
- * 
+ *
  * Provides REST API endpoints for AI integration and external certificate generation requests.
  * Includes secure API key authentication and comprehensive error handling.
- * 
+ *
  * @package Certificate_Generator
  * @since 3.3.1
  */
@@ -67,7 +67,7 @@ function certificate_generator_api_permission_check($request) {
 
     // Get API key from Authorization header
     $auth_header = $request->get_header('authorization');
-    
+
     if (empty($auth_header)) {
         return new WP_Error(
             'missing_auth_header',
@@ -86,10 +86,10 @@ function certificate_generator_api_permission_check($request) {
     }
 
     $provided_key = trim($matches[1]);
-    
+
     // Get stored API key from settings
     $stored_key = get_option('certificate_generator_api_key', '');
-    
+
     if (empty($stored_key)) {
         return new WP_Error(
             'api_key_not_configured',
@@ -106,7 +106,7 @@ function certificate_generator_api_permission_check($request) {
             'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? 'unknown',
             'timestamp' => current_time('mysql')
         ));
-        
+
         return new WP_Error(
             'invalid_api_key',
             'Invalid API key provided',
@@ -333,7 +333,7 @@ function certificate_generator_get_or_create_student($email, $name = '', $school
     );
 
     $student_id = wp_insert_post($student_data);
-    
+
     if (is_wp_error($student_id)) {
         return new WP_Error(
             'student_creation_failed',
@@ -366,7 +366,7 @@ function certificate_generator_generate_certificate_api($student_id, $certificat
 
     $student = get_post($student_id);
     $certificate = get_post($certificate_id);
-    
+
     if (!$student || !$certificate) {
         return new WP_Error(
             'invalid_records',
@@ -384,12 +384,12 @@ function certificate_generator_generate_certificate_api($student_id, $certificat
     $filename = 'certificate_' . $student_id . '_' . $certificate_id . '_' . time() . '.pdf';
     $upload_dir = wp_upload_dir();
     $certificates_dir = $upload_dir['basedir'] . '/certificates/';
-    
+
     // Create directory if it doesn't exist
     if (!file_exists($certificates_dir)) {
         wp_mkdir_p($certificates_dir);
     }
-    
+
     $file_path = $certificates_dir . $filename;
     $download_url = $upload_dir['baseurl'] . '/certificates/' . $filename;
 
@@ -447,12 +447,12 @@ function certificate_generator_log_api_activity($action, $data = array()) {
     // Store in database for admin viewing
     $existing_logs = get_option('certificate_generator_api_logs', array());
     $existing_logs[] = $log_entry;
-    
+
     // Keep only last 100 log entries
     if (count($existing_logs) > 100) {
         $existing_logs = array_slice($existing_logs, -100);
     }
-    
+
     update_option('certificate_generator_api_logs', $existing_logs);
 }
 
@@ -463,14 +463,14 @@ function certificate_generator_send_certificate_email($email, $file_path, $certi
     if (!function_exists('certificate_generator_send_custom_email')) {
         require_once plugin_dir_path(__FILE__) . 'email-functions.php';
     }
-    
+
     $email_options = [
         'subject' => 'Your ' . $certificate_type . ' Certificate',
         'message' => 'Dear Student,\n\nPlease find attached your certificate.\n\nThank you!',
         'attach_certificate' => true,
         'reply_to' => get_option('admin_email')
     ];
-    
+
     return certificate_generator_send_custom_email(
         $email,
         'Student',
@@ -478,3 +478,4 @@ function certificate_generator_send_certificate_email($email, $file_path, $certi
         $file_path
     );
 }
+?>

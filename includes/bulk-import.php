@@ -14,12 +14,49 @@ function bulk_import_students() {
             }
 
             if (($handle = fopen($file, 'r')) !== false) {
-                $header = fgetcsv($handle, 1000, ','); // Read the first row as the header
+                // Read and strip BOM if present (UTF-8 BOM: EF BB BF)
+                $bom = fread($handle, 3);
+                if ($bom !== "\xEF\xBB\xBF") {
+                    // No BOM found, rewind to beginning
+                    rewind($handle);
+                }
+
+                // Read the first row as the header, skip empty lines
+                $header = false;
+                while (($row = fgetcsv($handle, 1000, ',')) !== false) {
+                    // Skip empty rows (rows with only null or empty values)
+                    if (array_filter($row, function($val) { return $val !== null && $val !== ''; })) {
+                        $header = $row;
+                        break;
+                    }
+                }
+
+                if ($header === false) {
+                    echo '<div class="notice notice-error"><p>CSV file is empty or invalid.</p></div>';
+                    fclose($handle);
+                    return;
+                }
+
+                // Trim whitespace from all header values, handle null values
+                $header = array_map(function($val) { return trim((string)$val); }, $header);
 
                 // Validate headers match the required fields
                 $required_fields = ['student_name', 'email', 'school_name', 'issue_date', 'certificate_type'];
-                if ($header !== $required_fields) {
-                    echo '<div class="notice notice-error"><p>Invalid CSV format. Please ensure the headers are: ' . implode(', ', $required_fields) . '</p></div>';
+
+                // Check for missing or extra fields
+                $missing_fields = array_diff($required_fields, $header);
+                $extra_fields = array_diff($header, $required_fields);
+
+                if (!empty($missing_fields) || !empty($extra_fields)) {
+                    $error_msg = '<strong>Invalid CSV format.</strong><br><br>';
+                    if (!empty($missing_fields)) {
+                        $error_msg .= '<strong>Missing fields:</strong> ' . implode(', ', $missing_fields) . '<br>';
+                    }
+                    if (!empty($extra_fields)) {
+                        $error_msg .= '<strong>Extra/incorrect fields:</strong> ' . implode(', ', $extra_fields) . '<br>';
+                    }
+                    $error_msg .= '<br><strong>Required fields:</strong> ' . implode(', ', $required_fields);
+                    echo '<div class="notice notice-error"><p>' . $error_msg . '</p></div>';
                     fclose($handle);
                     return;
                 }
@@ -27,6 +64,17 @@ function bulk_import_students() {
                 // Process each row
                 $imported_count = 0;
                 while (($data = fgetcsv($handle, 1000, ',')) !== false) {
+                    // Skip empty rows
+                    if (!array_filter($data, function($val) { return $val !== null && $val !== ''; })) {
+                        continue;
+                    }
+
+                    // Ensure data array has same number of elements as header
+                    $data = array_pad($data, count($header), '');
+
+                    // Trim all data values
+                    $data = array_map(function($val) { return trim((string)$val); }, $data);
+
                     $student_data = array_combine($header, $data);
 
                     // Generate school abbreviation
@@ -125,7 +173,31 @@ function bulk_import_teachers() {
             }
 
             if (($handle = fopen($file, 'r')) !== false) {
-                $header = fgetcsv($handle, 1000, ','); // Read the first row as the header
+                // Read and strip BOM if present (UTF-8 BOM: EF BB BF)
+                $bom = fread($handle, 3);
+                if ($bom !== "\xEF\xBB\xBF") {
+                    // No BOM found, rewind to beginning
+                    rewind($handle);
+                }
+
+                // Read the first row as the header, skip empty lines
+                $header = false;
+                while (($row = fgetcsv($handle, 1000, ',')) !== false) {
+                    // Skip empty rows (rows with only null or empty values)
+                    if (array_filter($row, function($val) { return $val !== null && $val !== ''; })) {
+                        $header = $row;
+                        break;
+                    }
+                }
+
+                if ($header === false) {
+                    echo '<div class="notice notice-error"><p>CSV file is empty or invalid.</p></div>';
+                    fclose($handle);
+                    return;
+                }
+
+                // Trim whitespace from all header values, handle null values
+                $header = array_map(function($val) { return trim((string)$val); }, $header);
 
                 // Validate headers match the required fields
                 $required_fields = [
@@ -136,8 +208,20 @@ function bulk_import_teachers() {
                     'certificate_type'
                 ];
 
-                if ($header !== $required_fields) {
-                    echo '<div class="notice notice-error"><p>Invalid CSV format. Please ensure the headers are: ' . implode(', ', $required_fields) . '</p></div>';
+                // Check for missing or extra fields
+                $missing_fields = array_diff($required_fields, $header);
+                $extra_fields = array_diff($header, $required_fields);
+
+                if (!empty($missing_fields) || !empty($extra_fields)) {
+                    $error_msg = '<strong>Invalid CSV format.</strong><br><br>';
+                    if (!empty($missing_fields)) {
+                        $error_msg .= '<strong>Missing fields:</strong> ' . implode(', ', $missing_fields) . '<br>';
+                    }
+                    if (!empty($extra_fields)) {
+                        $error_msg .= '<strong>Extra/incorrect fields:</strong> ' . implode(', ', $extra_fields) . '<br>';
+                    }
+                    $error_msg .= '<br><strong>Required fields:</strong> ' . implode(', ', $required_fields);
+                    echo '<div class="notice notice-error"><p>' . $error_msg . '</p></div>';
                     fclose($handle);
                     return;
                 }
@@ -145,6 +229,17 @@ function bulk_import_teachers() {
                 // Process each row
                 $imported_count = 0;
                 while (($data = fgetcsv($handle, 1000, ',')) !== false) {
+                    // Skip empty rows
+                    if (!array_filter($data, function($val) { return $val !== null && $val !== ''; })) {
+                        continue;
+                    }
+
+                    // Ensure data array has same number of elements as header
+                    $data = array_pad($data, count($header), '');
+
+                    // Trim all data values
+                    $data = array_map(function($val) { return trim((string)$val); }, $data);
+
                     $teacher_data = array_combine($header, $data);
 
                     // Generate school abbreviation
@@ -258,12 +353,49 @@ function bulk_import_schools() {
             }
 
             if (($handle = fopen($file, 'r')) !== false) {
-                $header = fgetcsv($handle, 1000, ','); // Read the first row as the header
+                // Read and strip BOM if present (UTF-8 BOM: EF BB BF)
+                $bom = fread($handle, 3);
+                if ($bom !== "\xEF\xBB\xBF") {
+                    // No BOM found, rewind to beginning
+                    rewind($handle);
+                }
+
+                // Read the first row as the header, skip empty lines
+                $header = false;
+                while (($row = fgetcsv($handle, 1000, ',')) !== false) {
+                    // Skip empty rows (rows with only null or empty values)
+                    if (array_filter($row, function($val) { return $val !== null && $val !== ''; })) {
+                        $header = $row;
+                        break;
+                    }
+                }
+
+                if ($header === false) {
+                    echo '<div class="notice notice-error"><p>CSV file is empty or invalid.</p></div>';
+                    fclose($handle);
+                    return;
+                }
+
+                // Trim whitespace from all header values, handle null values
+                $header = array_map(function($val) { return trim((string)$val); }, $header);
 
                 // Validate headers match the required fields
                 $required_fields = ['school_name', 'place', 'issue_date', 'certificate_type'];
-                if ($header !== $required_fields) {
-                    echo '<div class="notice notice-error"><p>Invalid CSV format. Please ensure the headers are: ' . implode(', ', $required_fields) . '</p></div>';
+
+                // Check for missing or extra fields
+                $missing_fields = array_diff($required_fields, $header);
+                $extra_fields = array_diff($header, $required_fields);
+
+                if (!empty($missing_fields) || !empty($extra_fields)) {
+                    $error_msg = '<strong>Invalid CSV format.</strong><br><br>';
+                    if (!empty($missing_fields)) {
+                        $error_msg .= '<strong>Missing fields:</strong> ' . implode(', ', $missing_fields) . '<br>';
+                    }
+                    if (!empty($extra_fields)) {
+                        $error_msg .= '<strong>Extra/incorrect fields:</strong> ' . implode(', ', $extra_fields) . '<br>';
+                    }
+                    $error_msg .= '<br><strong>Required fields:</strong> ' . implode(', ', $required_fields);
+                    echo '<div class="notice notice-error"><p>' . $error_msg . '</p></div>';
                     fclose($handle);
                     return;
                 }
@@ -271,6 +403,17 @@ function bulk_import_schools() {
                 // Process each row
                 $imported_count = 0;
                 while (($data = fgetcsv($handle, 1000, ',')) !== false) {
+                    // Skip empty rows
+                    if (!array_filter($data, function($val) { return $val !== null && $val !== ''; })) {
+                        continue;
+                    }
+
+                    // Ensure data array has same number of elements as header
+                    $data = array_pad($data, count($header), '');
+
+                    // Trim all data values
+                    $data = array_map(function($val) { return trim((string)$val); }, $data);
+
                     $school_data = array_combine($header, $data);
 
                     // Generate school abbreviation
@@ -382,7 +525,31 @@ function bulk_import_certificates() {
             }
 
             if (($handle = fopen($file, 'r')) !== false) {
-                $header = fgetcsv($handle, 1000, ','); // Read the first row as the header
+                // Read and strip BOM if present (UTF-8 BOM: EF BB BF)
+                $bom = fread($handle, 3);
+                if ($bom !== "\xEF\xBB\xBF") {
+                    // No BOM found, rewind to beginning
+                    rewind($handle);
+                }
+
+                // Read the first row as the header, skip empty lines
+                $header = false;
+                while (($row = fgetcsv($handle, 1000, ',')) !== false) {
+                    // Skip empty rows (rows with only null or empty values)
+                    if (array_filter($row, function($val) { return $val !== null && $val !== ''; })) {
+                        $header = $row;
+                        break;
+                    }
+                }
+
+                if ($header === false) {
+                    echo '<div class="notice notice-error"><p>CSV file is empty or invalid.</p></div>';
+                    fclose($handle);
+                    return;
+                }
+
+                // Trim whitespace from all header values, handle null values
+                $header = array_map(function($val) { return trim((string)$val); }, $header);
 
                 // Validate headers match the required fields
                 $required_fields = [
@@ -410,8 +577,20 @@ function bulk_import_certificates() {
                     'width'
                 ];
 
-                if ($header !== $required_fields) {
-                    echo '<div class="notice notice-error"><p>Invalid CSV format. Please ensure the headers are: ' . implode(', ', $required_fields) . '</p></div>';
+                // Check for missing or extra fields
+                $missing_fields = array_diff($required_fields, $header);
+                $extra_fields = array_diff($header, $required_fields);
+
+                if (!empty($missing_fields) || !empty($extra_fields)) {
+                    $error_msg = '<strong>Invalid CSV format.</strong><br><br>';
+                    if (!empty($missing_fields)) {
+                        $error_msg .= '<strong>Missing fields:</strong> ' . implode(', ', $missing_fields) . '<br>';
+                    }
+                    if (!empty($extra_fields)) {
+                        $error_msg .= '<strong>Extra/incorrect fields:</strong> ' . implode(', ', $extra_fields) . '<br>';
+                    }
+                    $error_msg .= '<br><strong>Required fields:</strong> ' . implode(', ', $required_fields);
+                    echo '<div class="notice notice-error"><p>' . $error_msg . '</p></div>';
                     fclose($handle);
                     return;
                 }
@@ -419,13 +598,24 @@ function bulk_import_certificates() {
                 // Process each row
                 $imported_count = 0;
                 while (($data = fgetcsv($handle, 1000, ',')) !== false) {
+                    // Skip empty rows
+                    if (!array_filter($data, function($val) { return $val !== null && $val !== ''; })) {
+                        continue;
+                    }
+
+                    // Ensure data array has same number of elements as header
+                    $data = array_pad($data, count($header), '');
+
+                    // Trim all data values
+                    $data = array_map(function($val) { return trim((string)$val); }, $data);
+
                     $certificate_data = array_combine($header, $data);
-                    
+
                     // Generate certificate title for duplicate checking
                     $certificate_type = sanitize_text_field($certificate_data['certificate_type']);
                     $template_url = esc_url($certificate_data['template_url']);
                     $new_title = ($certificate_type ?: 'Certificate') . ' - ' . ($template_url ? parse_url($template_url, PHP_URL_HOST) : 'No Template URL');
-                    
+
                     // Check if a certificate with this template URL and type already exists
                     $existing_query = new WP_Query([
                         'post_type' => 'certificates',
@@ -522,8 +712,4 @@ function add_bulk_import_certificates_submenu() {
     );
 }
 add_action('admin_menu', 'add_bulk_import_certificates_submenu');
-
-
-
-
 ?>

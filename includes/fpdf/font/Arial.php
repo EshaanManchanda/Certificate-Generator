@@ -23,3 +23,4 @@ return array(
 	'file' => 'Arial.z',
 	'originalsize' => 275572,
 );
+?>

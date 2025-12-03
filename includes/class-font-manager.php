@@ -5,68 +5,128 @@ if (!defined('ABSPATH')) {
 }
 
 class CertificateGenerator_FontManager {
-    
+
     private static $instance = null;
     private $font_path;
     private $available_fonts = array();
-    
+    private $essential_fonts_loaded = false;
+    private $font_cache = array();
+    private $memory_usage_threshold = 32; // MB
+
     public static function getInstance() {
         if (self::$instance === null) {
             self::$instance = new self();
         }
         return self::$instance;
     }
-    
+
     private function __construct() {
         $this->font_path = plugin_dir_path(__FILE__) . 'fpdf/font/';
-        $this->discover_fonts();
+
+        // Only load essential fonts during construction to avoid memory issues
+        $this->load_essential_fonts();
     }
-    
+
     /**
-     * Automatically discover all available fonts in the font directory
+     * Load only essential fonts to reduce memory footprint during activation
      */
-    private function discover_fonts() {
-        $this->available_fonts = array();
-        
+    private function load_essential_fonts() {
+        // Define essential fonts that should always be available
+        // Updated for optimized 200-font collection
+        $essential_fonts = array(
+            // User-requested fonts (top priority)
+            'Arial' => 'Arial',
+            'times' => 'Times',
+            'timesb' => 'Times Bold',
+            'timesi' => 'Times Italic',
+            'timesbi' => 'Times Bold Italic',
+            'rumblebravescriptitalic' => 'Rumble Brave Script Italic',
+
+            // Core system fonts
+            'helvetica' => 'Helvetica',
+            'helveticab' => 'Helvetica Bold',
+            'helveticai' => 'Helvetica Italic',
+            'helveticabi' => 'Helvetica Bold Italic',
+            'courier' => 'Courier',
+            'courierb' => 'Courier Bold',
+            'courieri' => 'Courier Italic',
+            'courierbi' => 'Courier Bold Italic',
+            'georgia' => 'Georgia',
+            'verdanab' => 'Verdana Bold',
+
+            // Popular certificate fonts
+            'opensans' => 'Open Sans',
+            'lato' => 'Lato',
+            'pacifico' => 'Pacifico',
+            'lobster' => 'Lobster',
+            'poppins' => 'Poppins',
+            'comicspans' => 'Comic Sans'
+        );
+
+        foreach ($essential_fonts as $font_file => $display_name) {
+            $font_path = $this->font_path . $font_file . '.php';
+            $z_path = $this->font_path . $font_file . '.z';
+
+            if (file_exists($font_path) && file_exists($z_path)) {
+                $this->available_fonts[$font_file] = array(
+                    'file' => $font_file,
+                    'display_name' => $display_name,
+                    'path' => $font_path,
+                    'essential' => true
+                );
+            }
+        }
+
+        $this->essential_fonts_loaded = true;
+    }
+
+    /**
+     * Lazy load all available fonts (only when needed)
+     * Optimized for 200-font collection
+     */
+    private function discover_all_fonts() {
+        // Skip if we only want essential fonts or already loaded
         if (!is_dir($this->font_path)) {
             return;
         }
-        
+
+        // Get font files - with optimized collection, we can load all safely
         $font_files = glob($this->font_path . '*.php');
-        
+
         foreach ($font_files as $font_file) {
             $filename = basename($font_file, '.php');
-            
-            // Skip system files
-            if (in_array($filename, array('symbol', 'zapfdingbats'))) {
+
+            // Skip if already loaded or system files
+            if (isset($this->available_fonts[$filename]) ||
+                in_array($filename, array('symbol', 'zapfdingbats'))) {
                 continue;
             }
-            
-            // Validate font files - check if both .php and .z files exist
+
+            // Validate font files
             $z_file = $this->font_path . $filename . '.z';
             $php_size = filesize($font_file);
-            
+
             if (!file_exists($z_file) || $php_size < 100) {
-                error_log("FontManager: Skipping broken font: $filename (missing .z file or invalid .php)");
                 continue;
             }
-            
+
             // Get human-readable font name
             $display_name = $this->get_font_display_name($filename);
-            
+
             $this->available_fonts[$filename] = array(
                 'file' => $filename,
                 'display_name' => $display_name,
-                'path' => $font_file
+                'path' => $font_file,
+                'essential' => false
             );
         }
-        
+
         // Sort by display name
         uasort($this->available_fonts, function($a, $b) {
             return strcmp($a['display_name'], $b['display_name']);
         });
     }
-    
+
     /**
      * Convert font filename to human-readable display name
      */
@@ -89,38 +149,65 @@ class CertificateGenerator_FontManager {
             'garmond' => 'Garamond',
             'georgia' => 'Georgia'
         );
-        
+
         $filename_lower = strtolower($filename);
-        
+
         if (isset($name_mappings[$filename_lower])) {
             return $name_mappings[$filename_lower];
         }
-        
+
         // Clean up filename for display
         $display_name = str_replace(array('-', '_'), ' ', $filename);
         $display_name = ucwords($display_name);
-        
+
         return $display_name;
     }
-    
+
     /**
-     * Get all available fonts
+     * Get all available fonts (with lazy loading option)
+     * Optimized for 200-font collection
      */
-    public function get_available_fonts() {
+    public function get_available_fonts($load_all = false) {
+        if ($load_all && count($this->available_fonts) <= 25) {
+            // Load all fonts since we now have only 200 optimized fonts
+            $this->discover_all_fonts();
+        }
         return $this->available_fonts;
     }
-    
+
+    /**
+     * Get only essential fonts (fast, memory-efficient)
+     */
+    public function get_essential_fonts() {
+        $essential = array();
+        foreach ($this->available_fonts as $key => $font) {
+            if (isset($font['essential']) && $font['essential']) {
+                $essential[$key] = $font;
+            }
+        }
+        return $essential;
+    }
+
     /**
      * Get font names for dropdown/select options
+     * Optimized for 200-font collection
      */
-    public function get_font_options() {
+    public function get_font_options($include_all = false) {
+        $fonts_to_use = $include_all ? $this->get_available_fonts(true) : $this->get_essential_fonts();
+
         $options = array();
-        foreach ($this->available_fonts as $font_key => $font_data) {
+        foreach ($fonts_to_use as $font_key => $font_data) {
             $options[$font_key] = $font_data['display_name'];
         }
+
+        // Add option to load more fonts if not all loaded
+        if (!$include_all && count($this->available_fonts) <= 25) {
+            $options['load_more'] = '--- Load All 200 Fonts ---';
+        }
+
         return $options;
     }
-    
+
     /**
      * Add font to PDF instance
      */
@@ -134,19 +221,19 @@ class CertificateGenerator_FontManager {
                 return 'Arial';
             }
         }
-        
+
         $font_data = $this->available_fonts[$font_name];
-        
+
         // Double-check font files exist before using
         $php_file = $this->font_path . $font_data['file'] . '.php';
         $z_file = $this->font_path . $font_data['file'] . '.z';
-        
+
         if (!file_exists($php_file) || !file_exists($z_file)) {
             error_log("FontManager: Font files missing for $font_name, falling back to Arial");
             $pdf->SetFont('Arial', $style, $size);
             return 'Arial';
         }
-        
+
         try {
             // Add the font if not already added
             $pdf->AddFont($font_data['display_name'], $style, $font_data['file'] . '.php');
@@ -159,7 +246,7 @@ class CertificateGenerator_FontManager {
             return 'Arial';
         }
     }
-    
+
     /**
      * Get font file path for a given font name
      */
@@ -169,14 +256,14 @@ class CertificateGenerator_FontManager {
         }
         return null;
     }
-    
+
     /**
      * Check if a font exists
      */
     public function font_exists($font_name) {
         return isset($this->available_fonts[$font_name]);
     }
-    
+
     /**
      * Get display name for a font
      */
@@ -186,14 +273,55 @@ class CertificateGenerator_FontManager {
         }
         return $font_name;
     }
-    
+
     /**
      * Refresh font list (useful after adding new fonts)
      */
-    public function refresh_fonts() {
-        $this->discover_fonts();
+    public function refresh_fonts($essential_only = true) {
+        $this->available_fonts = array();
+        if ($essential_only) {
+            $this->load_essential_fonts();
+        } else {
+            $this->load_essential_fonts();
+            $this->discover_all_fonts();
+        }
     }
-    
+
+    /**
+     * Check if we're in memory-safe mode
+     */
+    public function is_memory_safe_mode() {
+        $memory_limit = ini_get('memory_limit');
+        $memory_limit_bytes = $this->convert_to_bytes($memory_limit);
+
+        // If memory limit is less than 128MB, use memory-safe mode
+        return $memory_limit_bytes < (128 * 1024 * 1024);
+    }
+
+    /**
+     * Convert memory limit string to bytes
+     */
+    private function convert_to_bytes($size_str) {
+        if (empty($size_str)) {
+            return 0;
+        }
+
+        $size_str = trim($size_str);
+        $last_char = strtolower($size_str[strlen($size_str) - 1]);
+        $size = (int) $size_str;
+
+        switch ($last_char) {
+            case 'g':
+                $size *= 1024;
+            case 'm':
+                $size *= 1024;
+            case 'k':
+                $size *= 1024;
+        }
+
+        return $size;
+    }
+
     /**
      * Get default font
      */
@@ -204,4 +332,94 @@ class CertificateGenerator_FontManager {
         }
         return 'helvetica';
     }
+
+    /**
+     * Monitor memory usage and clear cache if needed
+     */
+    private function monitor_memory_usage() {
+        if (!function_exists('memory_get_usage')) {
+            return;
+        }
+
+        $current_memory = memory_get_usage(true) / 1024 / 1024; // Convert to MB
+
+        if ($current_memory > $this->memory_usage_threshold) {
+            $this->clear_font_cache();
+
+            // Log memory optimization
+            if (function_exists('error_log')) {
+                error_log(sprintf(
+                    'Certificate Generator: Memory optimization triggered at %.2f MB, cache cleared',
+                    $current_memory
+                ));
+            }
+        }
+    }
+
+    /**
+     * Clear font cache to free memory
+     */
+    public function clear_font_cache() {
+        $this->font_cache = array();
+
+        // Keep only essential fonts in memory
+        $essential_font_keys = array(
+            'Arial', 'helvetica', 'times', 'timesb', 'courier',
+            'opensans', 'lato', 'pacifico'
+        );
+
+        $filtered_fonts = array();
+        foreach ($this->available_fonts as $key => $font) {
+            if (in_array($key, $essential_font_keys)) {
+                $filtered_fonts[$key] = $font;
+            }
+        }
+
+        $this->available_fonts = $filtered_fonts;
+    }
+
+    /**
+     * Get memory usage statistics
+     */
+    public function get_memory_stats() {
+        $stats = array(
+            'current_usage_mb' => 0,
+            'cache_size' => count($this->font_cache),
+            'fonts_loaded' => count($this->available_fonts),
+            'memory_limit' => ini_get('memory_limit')
+        );
+
+        if (function_exists('memory_get_usage')) {
+            $stats['current_usage_mb'] = round(memory_get_usage(true) / 1024 / 1024, 2);
+        }
+
+        return $stats;
+    }
+
+    /**
+     * Optimize font loading for performance
+     */
+    public function optimize_for_performance() {
+        // Clear any unnecessary font data
+        $this->clear_font_cache();
+
+        // Load only the most commonly used fonts
+        $priority_fonts = array('Arial', 'helvetica', 'times', 'opensans');
+
+        foreach ($priority_fonts as $font) {
+            if (!isset($this->available_fonts[$font])) {
+                $font_path = $this->font_path . $font . '.php';
+                if (file_exists($font_path)) {
+                    $this->available_fonts[$font] = array(
+                        'file' => $font,
+                        'name' => $this->generate_display_name($font),
+                        'loaded_at' => time()
+                    );
+                }
+            }
+        }
+
+        return true;
+    }
 }
+?>

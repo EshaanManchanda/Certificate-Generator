@@ -1,10 +1,15 @@
 <?php
 /**
- * Plugin Name: Certificate Generator
- * Description: A plugin for managing and generating certificates for students.
- * Version: 6.0.1
- * Author: Eshaan Manchanda
- * Author URI: https://www.linkedin.com/in/eshaan-manchanda/
+ * Plugin Name:       Certificate Generator
+ * Plugin URI:        https://github.com/eshaanmanchanda/certificate-generator
+ * Description:       A comprehensive plugin for managing, generating, and bulk-sending certificates for students and teachers.
+ * Version:           6.1.0
+ * Author:            Eshaan Manchanda
+ * Author URI:        https://www.linkedin.com/in/eshaan-manchanda/
+ * License:           GPL-2.0+
+ * License URI:       https://www.gnu.org/licenses/gpl-2.0.txt
+ * Text Domain:       certificate-generator
+ * Domain Path:       /languages
  */
 
 if (!defined('ABSPATH')) {

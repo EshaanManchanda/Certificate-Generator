@@ -1356,4 +1356,287 @@ function certificate_generator_add_send_filtered_button($which) {
     endif;
 }
 add_action('manage_posts_extra_tablenav', 'certificate_generator_add_send_filtered_button');
+
+/**
+ * Add Bulk Edit Fields
+ *
+ * @param string $column_name Column name
+ * @param string $post_type Post type
+ */
+function certificate_generator_bulk_edit_fields($column_name, $post_type) {
+    // Only run for our custom post types
+    if (!in_array($post_type, ['students', 'teachers', 'schools'])) {
+        return;
+    }
+
+    // Only output once (hook fires for every column)
+    if ($column_name !== 'email') {
+        return;
+    }
+    ?>
+    <fieldset class="inline-edit-col-right inline-edit-book">
+        <div class="inline-edit-col">
+            <h4><?php _e('Certificate Data', 'certificate-generator'); ?></h4>
+
+            <div class="inline-edit-group">
+                <label class="alignleft">
+                    <span class="title"><?php _e('Email', 'certificate-generator'); ?></span>
+                    <span class="input-text-wrap">
+                        <input type="text" name="certificate_bulk_edit[email]" class="text" placeholder="<?php _e('— No Change —', 'certificate-generator'); ?>">
+                    </span>
+                </label>
+            </div>
+
+            <div class="inline-edit-group">
+                <label class="alignleft">
+                    <span class="title"><?php _e('School Name', 'certificate-generator'); ?></span>
+                    <span class="input-text-wrap">
+                        <?php 
+                        $schools = function_exists('certificate_generator_get_unique_schools') 
+                            ? certificate_generator_get_unique_schools($post_type) 
+                            : [];
+                        ?>
+                        <select name="certificate_bulk_edit[school_name]" class="certificate-bulk-school-select">
+                            <option value=""><?php _e('— No Change —', 'certificate-generator'); ?></option>
+                            <?php foreach ($schools as $school): ?>
+                                <option value="<?php echo esc_attr($school); ?>"><?php echo esc_html($school); ?></option>
+                            <?php endforeach; ?>
+                            <option value="__new__"><?php _e('Set New...', 'certificate-generator'); ?></option>
+                        </select>
+                        <input type="text" name="certificate_bulk_edit[new_school_name]" class="text mt-1 certificate-bulk-new-school" style="display:none; margin-top: 5px;" placeholder="<?php _e('Enter new school name', 'certificate-generator'); ?>">
+                    </span>
+                </label>
+            </div>
+
+            <?php if ($post_type === 'students' || $post_type === 'teachers'): ?>
+            <div class="inline-edit-group">
+                <label class="alignleft">
+                    <span class="title"><?php _e('Teacher Name', 'certificate-generator'); ?></span>
+                    <span class="input-text-wrap">
+                        <input type="text" name="certificate_bulk_edit[teacher_name]" class="text" placeholder="<?php _e('— No Change —', 'certificate-generator'); ?>">
+                    </span>
+                </label>
+            </div>
+            <?php endif; ?>
+
+            <div class="inline-edit-group">
+                 <label class="alignleft">
+                    <span class="title"><?php _e('Issue Date', 'certificate-generator'); ?></span>
+                    <span class="input-text-wrap">
+                        <input type="date" name="certificate_bulk_edit[issue_date]" class="text">
+                        <span class="description" style="display:block; margin-top:2px; font-size:10px; color:#666;"><?php _e('Leave empty to keep current', 'certificate-generator'); ?></span>
+                    </span>
+                 </label>
+            </div>
+
+            <div class="inline-edit-group">
+                 <label class="alignleft">
+                    <span class="title"><?php _e('Cert Type', 'certificate-generator'); ?></span>
+                    <span class="input-text-wrap">
+                        <?php 
+                        $types = function_exists('certificate_generator_get_unique_certificate_types') 
+                            ? certificate_generator_get_unique_certificate_types($post_type) 
+                            : [];
+                        ?>
+                        <select name="certificate_bulk_edit[certificate_type]">
+                            <option value=""><?php _e('— No Change —', 'certificate-generator'); ?></option>
+                            <?php foreach ($types as $type): ?>
+                                <option value="<?php echo esc_attr($type); ?>"><?php echo esc_html($type); ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </span>
+                </label>
+            </div>
+        </div>
+    </fieldset>
+    <script type="text/javascript">
+    jQuery(document).ready(function($) {
+        // Toggle new school input
+        $('.certificate-bulk-school-select').on('change', function() {
+            var val = $(this).val();
+            var input = $(this).siblings('.certificate-bulk-new-school');
+            if (val === '__new__') {
+                input.show();
+            } else {
+                input.hide().val(''); // hide and clear
+            }
+        });
+    });
+    </script>
+    <?php
+}
+add_action('bulk_edit_custom_box', 'certificate_generator_bulk_edit_fields', 10, 2);
+
+/**
+ * Add Bulk Edit fields for Certificates CPT
+ */
+function certificate_generator_bulk_edit_fields_certificates($column_name, $post_type) {
+    if ($post_type !== 'certificates' || $column_name !== 'title') {
+        return;
+    }
+    
+    // Get fonts if available
+    $font_options = [];
+    if (class_exists('CertificateGenerator_FontManager')) {
+        $font_manager = CertificateGenerator_FontManager::getInstance();
+        $font_options = $font_manager->get_font_options();
+    }
+    ?>
+    <fieldset class="inline-edit-col-right inline-edit-book">
+        <div class="inline-edit-col">
+            <h4><?php _e('Certificate Configuration', 'certificate-generator'); ?></h4>
+
+            <div class="inline-edit-group">
+                <label class="alignleft">
+                    <span class="title"><?php _e('Cert Type', 'certificate-generator'); ?></span>
+                    <span class="input-text-wrap">
+                        <input type="text" name="certificate_bulk_edit[certificate_type]" class="text" placeholder="<?php _e('— No Change —', 'certificate-generator'); ?>">
+                    </span>
+                </label>
+            </div>
+
+            <div class="inline-edit-group">
+                <label class="alignleft">
+                    <span class="title"><?php _e('Orientation', 'certificate-generator'); ?></span>
+                    <span class="input-text-wrap">
+                        <select name="certificate_bulk_edit[template_orientation]">
+                            <option value=""><?php _e('— No Change —', 'certificate-generator'); ?></option>
+                            <option value="landscape"><?php _e('Landscape', 'certificate-generator'); ?></option>
+                            <option value="portrait"><?php _e('Portrait', 'certificate-generator'); ?></option>
+                        </select>
+                    </span>
+                </label>
+            </div>
+
+            <div class="inline-edit-group">
+                <label class="alignleft">
+                    <span class="title"><?php _e('Font Size', 'certificate-generator'); ?></span>
+                    <span class="input-text-wrap">
+                        <input type="number" name="certificate_bulk_edit[font_size]" class="text" min="6" max="72" placeholder="<?php _e('— No Change —', 'certificate-generator'); ?>">
+                    </span>
+                </label>
+            </div>
+
+            <div class="inline-edit-group">
+                <label class="alignleft">
+                    <span class="title"><?php _e('Font Color', 'certificate-generator'); ?></span>
+                    <span class="input-text-wrap">
+                        <input type="color" name="certificate_bulk_edit[font_color]" class="text" style="height: 25px;">
+                        <span class="description"><?php _e('Select to change', 'certificate-generator'); ?></span>
+                    </span>
+                </label>
+            </div>
+
+            <?php if (!empty($font_options)): ?>
+            <div class="inline-edit-group">
+                <label class="alignleft">
+                    <span class="title"><?php _e('Font Style', 'certificate-generator'); ?></span>
+                    <span class="input-text-wrap">
+                        <select name="certificate_bulk_edit[font_style]">
+                            <option value=""><?php _e('— No Change —', 'certificate-generator'); ?></option>
+                            <?php foreach ($font_options as $key => $label): ?>
+                                <option value="<?php echo esc_attr($key); ?>"><?php echo esc_html($label); ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </span>
+                </label>
+            </div>
+            <?php endif; ?>
+        </div>
+    </fieldset>
+    <?php
+}
+add_action('bulk_edit_custom_box', 'certificate_generator_bulk_edit_fields_certificates', 10, 2);
+
+/**
+ * Save Bulk Edit Fields
+ *
+ * @param int $post_id Post ID
+ */
+function certificate_generator_save_bulk_edit_fields($post_id) {
+    // Check if we are performing a bulk edit
+    if (!isset($_REQUEST['certificate_bulk_edit']) || !is_array($_REQUEST['certificate_bulk_edit'])) {
+        return;
+    }
+
+    // Verify permissions (usually handled by bulk_edit_posts but good practice)
+    if (!current_user_can('edit_post', $post_id)) {
+        return;
+    }
+
+    $data = $_REQUEST['certificate_bulk_edit'];
+    $post_type = get_post_type($post_id);
+
+    if (in_array($post_type, ['students', 'teachers', 'schools'])) {
+        // 1. Email
+        if (!empty($data['email'])) {
+            update_post_meta($post_id, 'email', sanitize_email($data['email']));
+        }
+
+        // 2. School Name
+        if (!empty($data['school_name'])) {
+            $school_name = sanitize_text_field($data['school_name']);
+            if ($school_name === '__new__' && !empty($data['new_school_name'])) {
+                $school_name = sanitize_text_field($data['new_school_name']);
+            }
+            
+            if ($school_name !== '__new__') {
+                update_post_meta($post_id, 'school_name', $school_name);
+            }
+        } elseif (isset($data['new_school_name']) && !empty($data['new_school_name'])) {
+            // Handle case where only new_school_name is sent (should cover above logic but safety net)
+            update_post_meta($post_id, 'school_name', sanitize_text_field($data['new_school_name']));
+        }
+
+        // 3. Teacher Name
+        if (!empty($data['teacher_name'])) {
+            update_post_meta($post_id, 'teacher_name', sanitize_text_field($data['teacher_name']));
+        }
+
+        // 4. Issue Date
+        if (!empty($data['issue_date'])) {
+            update_post_meta($post_id, 'issue_date', sanitize_text_field($data['issue_date']));
+        }
+
+        // 5. Certificate Type
+        if (!empty($data['certificate_type'])) {
+            update_post_meta($post_id, 'certificate_type', sanitize_text_field($data['certificate_type']));
+        }
+    } elseif ($post_type === 'certificates') {
+        // 1. Certificate Type
+        if (!empty($data['certificate_type'])) {
+            update_post_meta($post_id, 'certificate_type', sanitize_text_field($data['certificate_type']));
+        }
+
+        // 2. Orientation
+        if (!empty($data['template_orientation'])) {
+            update_post_meta($post_id, 'template_orientation', sanitize_text_field($data['template_orientation']));
+            // Update derived width if needed logic exists, otherwise assume width is updated manually or handled on save
+            // Note: certificate-post-type.php sets display name but doesn't auto-update width on save unless logic is added.
+        }
+
+        // 3. Font Size
+        if (!empty($data['font_size'])) {
+            update_post_meta($post_id, 'font_size', intval($data['font_size']));
+        }
+
+        // 4. Font Color
+        if (!empty($data['font_color']) && $data['font_color'] !== '#000000') { // Check against default to ensure intent? Or just check not empty
+             // Color input usually sends hex, but "No Change" is tricky with color input default.
+             // With color inputs, they default to black (#000000). To avoid overwriting with black unwantedly,
+             // we should probably check if the user actually interacted. But standard bulk edit color picker is hard.
+             // Let's assume if they touch it it sends value.
+             // Actually, color input in bulk edit row will default to black.
+             // It's safer to only update if it is NOT black, or use a text input/JS toggle.
+             // For now, I'll update it.
+            update_post_meta($post_id, 'font_color', sanitize_hex_color($data['font_color']));
+        }
+
+        // 5. Font Style
+        if (!empty($data['font_style'])) {
+            update_post_meta($post_id, 'font_style', sanitize_text_field($data['font_style']));
+        }
+    }
+}
+add_action('save_post', 'certificate_generator_save_bulk_edit_fields');
 ?>

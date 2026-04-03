@@ -1,0 +1,36 @@
+# WordPress specific files
+wp-config.php
+wp-content/uploads/
+wp-content/blogs.dir/
+wp-content/upgrade/
+wp-content/backup-db/
+wp-content/advanced-cache.php
+wp-content/wp-cache-config.php
+
+# Development files
+.vscode/
+.idea/
+*.log
+*.zip
+*.tmp
+.claude/
+.DS_Store
+Thumbs.db
+/plan
+
+# Backup files
+*.bak
+*.backup
+*~
+
+# Temporary files
+cleanup_fonts.php
+debug.log
+
+# Node modules (if any)
+node_modules/
+package-lock.json
+
+# Composer
+vendor/
+composer.lock

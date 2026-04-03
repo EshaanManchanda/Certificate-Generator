@@ -1,0 +1,58 @@
+/**
+ * Certificate Generation Progress Bar Styles
+ */
+
+#certificate-progress-container {
+    max-width: 600px;
+    margin: 30px auto;
+    padding: 20px;
+    background: #ffffff;
+    border-radius: 10px;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+    text-align: center;
+}
+
+#certificate-progress-container h3 {
+    color: #0073aa;
+    margin-top: 0;
+    margin-bottom: 15px;
+}
+
+.progress-bar-wrapper {
+    height: 20px;
+    background-color: #f0f0f0;
+    border-radius: 10px;
+    margin: 15px 0;
+    overflow: hidden;
+    position: relative;
+}
+
+.progress-bar {
+    height: 100%;
+    background: linear-gradient(to right, #0073aa, #005f8d);
+    border-radius: 10px;
+    transition: width 0.5s ease-in-out;
+    width: 0%;
+}
+
+.progress-status {
+    font-weight: bold;
+    margin: 10px 0;
+    color: #333;
+}
+
+.progress-details {
+    margin: 5px 0;
+    font-size: 14px;
+}
+
+.progress-counter {
+    margin: 5px 0;
+    font-size: 14px;
+    color: #666;
+}
+
+.current-student {
+    font-weight: bold;
+    color: #0073aa;
+}

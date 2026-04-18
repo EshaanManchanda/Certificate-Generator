@@ -20,6 +20,30 @@ if (!defined('ABSPATH')) {
 define('CERTIFICATE_GENERATOR_PATH', plugin_dir_path(__FILE__));
 define('CERTIFICATE_GENERATOR_URL', plugin_dir_url(__FILE__));
 
+// Plugins page action links: Settings | Docs | Get Pro
+add_filter('plugin_action_links_' . plugin_basename(__FILE__), function(array $links): array {
+    $custom = [
+        'settings' => '<a href="' . admin_url('options-general.php?page=certificate_generator_settings') . '">Settings</a>',
+        'docs'     => '<a href="https://github.com/eshaanmanchanda/certificate-generator#readme" target="_blank">Docs</a>',
+        'get_pro'  => '<a href="https://eshaanportfolio.vercel.app/" target="_blank" style="color:#d63638;font-weight:600;">Get Pro</a>',
+    ];
+    return array_merge($custom, $links);
+});
+
+
+/**
+ * Format a MySQL datetime string for user-facing display (dd-mm-yyyy).
+ *
+ * @param string|null $date_string  MySQL datetime/date string.
+ * @param bool        $include_time Include HH:ii in output.
+ * @return string Formatted date, or '—' for empty/invalid input.
+ */
+function cg_format_date(?string $date_string, bool $include_time = false): string {
+    if (empty($date_string) || $date_string === '0000-00-00 00:00:00') return '—';
+    $ts = strtotime($date_string);
+    if ($ts === false) return $date_string;
+    return $include_time ? date('d-m-Y H:i', $ts) : date('d-m-Y', $ts);
+}
 
 // Enqueue CSS and JS for Admin UI
 function custom_admin_assets($hook) {
@@ -52,38 +76,46 @@ add_action('admin_enqueue_scripts', 'custom_admin_assets');
 
 // Include required files with enhanced error handling
 $critical_files = [
-    'includes/server-compatibility-checker.php' => 'Server compatibility checker',
-    'includes/admin-error-reporting.php' => 'Error reporting system',
-    'includes/installation-debug.php' => 'Installation debug system',
-    'includes/server-diagnostic.php' => 'Server diagnostic tools'
+    'includes/Core/server-compatibility.php' => 'Server compatibility checker',
+    'includes/Core/error-reporting.php' => 'Error reporting system',
+    'includes/Core/installation-debug.php' => 'Installation debug system',
+    'includes/Core/server-diagnostic.php' => 'Server diagnostic tools'
 ];
 
 $optional_files = [
-    'includes/class-field-schema.php' => 'Field schema manager',
-    'includes/certificate-post-type.php' => 'Certificate post type',
-    'includes/student-certificate-search.php' => 'Student certificate search',
-    'includes/bulk-import.php' => 'Bulk import functionality',
-    'includes/bulk-export.php' => 'Bulk export functionality',
-    'includes/bulk-certificate-download.php' => 'Bulk certificate download',
-    'includes/class-certificate-background-processor.php' => 'Background processing',
-    'includes/class-license-manager.php' => 'License manager',
-    'includes/admin-usage-tracker.php' => 'Usage tracking',
-    'includes/admin-license-tab.php' => 'License settings tab',
-    'includes/admin-settings.php' => 'Admin settings',
-    'includes/admin-columns.php' => 'Admin columns',
-    'includes/api-endpoints.php' => 'API endpoints',
-    'includes/email-functions.php' => 'Email functions',
-    'includes/email-log.php' => 'Email logging',
-    'includes/admin-email-logs.php' => 'Admin email logs',
-    'includes/email-queue.php' => 'Email queue system',
-    'includes/email-rate-limiter.php' => 'Email rate limiter',
-    'includes/bulk-email-sender.php' => 'Bulk email sender',
-    'includes/admin-bulk-email.php' => 'Bulk email admin page',
-    'includes/admin-filters-api.php' => 'Admin filters API',
-    'includes/debug-dashboard.php' => 'Debug dashboard interface',
-    'includes/installation-recovery.php' => 'Installation recovery tools',
-    'includes/integration-dashboard.php' => 'Integration health dashboard widget',
-    'includes/single-student-template.php' => 'Student public profile template'
+    'includes/Core/field-schema.php' => 'Field schema manager',
+    'includes/Core/post-types.php' => 'Certificate post type',
+    'includes/Services/certificate-search.php' => 'Student certificate search',
+    'includes/Services/bulk-import.php' => 'Bulk import functionality',
+    'includes/Services/bulk-export.php' => 'Bulk export functionality',
+    'includes/Services/bulk-download.php' => 'Bulk certificate download',
+    'includes/Services/background-processor.php' => 'Background processing',
+    'includes/Core/license-manager.php' => 'License manager',
+    'includes/Admin/usage-tracker.php' => 'Usage tracking',
+    'includes/Admin/license-tab.php' => 'License settings tab',
+    'includes/Admin/settings.php' => 'Admin settings',
+    'includes/Admin/columns.php' => 'Admin columns',
+    'includes/API/endpoints.php' => 'API endpoints',
+    'includes/Email/functions.php' => 'Email functions',
+    'includes/Email/log.php' => 'Email logging',
+    'includes/Admin/email-logs.php' => 'Admin email logs',
+    'includes/Email/queue.php' => 'Email queue system',
+    'includes/Email/rate-limiter.php' => 'Email rate limiter',
+    'includes/Services/bulk-email-sender.php' => 'Bulk email sender',
+    'includes/Admin/bulk-email.php' => 'Bulk email admin page',
+    'includes/Admin/filters-api.php' => 'Admin filters API',
+    'includes/Admin/debug-dashboard.php' => 'Debug dashboard interface',
+    'includes/Core/installation-recovery.php' => 'Installation recovery tools',
+    'includes/Admin/integration-dashboard.php' => 'Integration health dashboard widget',
+    'includes/Public/student-template.php' => 'Student public profile template',
+    'includes/Database/migrator.php' => 'Database migrator',
+    'includes/Services/serial-generator.php' => 'Serial number generator',
+    'includes/Services/qr-generator.php' => 'QR code generator',
+    'includes/Admin/cg-settings.php' => 'Admin settings',
+    'includes/Admin/analytics.php' => 'Analytics dashboard',
+    'includes/Admin/bulk-serial.php' => 'Bulk serial generator',
+    'includes/Public/verification.php' => 'Public verification page',
+    'includes/Cron/jobs.php' => 'Scheduled cron jobs'
 ];
 
 $missing_critical_files = [];
@@ -130,6 +162,160 @@ if (!empty($missing_critical_files)) {
 // Store missing files info for admin display
 if (!empty($missing_optional_files)) {
     update_option('certificate_generator_missing_files', $missing_optional_files);
+}
+
+// ── New Architecture: PSR-4 Autoloader ──────────────────────────────────────
+$autoloader = CERTIFICATE_GENERATOR_PATH . 'vendor/autoload.php';
+if (file_exists($autoloader)) {
+    require_once $autoloader;
+} else {
+    // Fallback PSR-4 autoloader — active when composer install hasn't been run.
+    // Maps CertificateGenerator\Foo\Bar → src/Foo/Bar.php
+    spl_autoload_register(function (string $class): void {
+        $prefix = 'CertificateGenerator\\';
+        $len    = strlen($prefix);
+        if (strncmp($class, $prefix, $len) !== 0) {
+            return;
+        }
+        $relative = substr($class, $len);
+        $file = CERTIFICATE_GENERATOR_PATH . 'src/' . str_replace('\\', DIRECTORY_SEPARATOR, $relative) . '.php';
+        if (file_exists($file)) {
+            require_once $file;
+        }
+    });
+}
+
+if (class_exists('\CertificateGenerator\Core\Plugin')) {
+    $plugin = new \CertificateGenerator\Core\Plugin();
+
+    register_activation_hook(__FILE__, [\CertificateGenerator\Core\Plugin::class, 'activate']);
+    register_deactivation_hook(__FILE__, [\CertificateGenerator\Core\Plugin::class, 'deactivate']);
+
+    add_action('plugins_loaded', function() use ($plugin) {
+        $plugin->boot();
+    });
+}
+
+// ── Legacy Enhancement Classes (keep working while src/ migration continues) ─
+if (class_exists('CG_Migrator')) {
+    CG_Migrator::run();
+}
+
+if (class_exists('CG_Serial_Number_Generator')) {
+    $serial_gen = CG_Serial_Number_Generator::get_instance();
+    $serial_gen->register_api_endpoints();
+}
+
+if (class_exists('CG_QR_Code_Generator')) {
+    CG_QR_Code_Generator::get_instance()->register_template_meta_fields();
+}
+
+if (class_exists('CG_Admin_Settings')) {
+    $admin_settings = new CG_Admin_Settings();
+    $admin_settings->init();
+}
+
+if (class_exists('CG_Analytics_Dashboard')) {
+    CG_Analytics_Dashboard::get_instance()->init();
+}
+
+if (class_exists('CG_Bulk_Serial_Generator')) {
+    CG_Bulk_Serial_Generator::get_instance()->init();
+}
+
+if (class_exists('CG_Public_Verification')) {
+    CG_Public_Verification::get_instance()->init();
+}
+
+if (class_exists('CG_Cron_Jobs')) {
+    CG_Cron_Jobs::init();
+}
+
+// ── Custom Tables: Create tables + sync hooks ────────────────────────────────
+if (class_exists('\CertificateGenerator\Database\CustomTables')) {
+    $custom_tables = \CertificateGenerator\Database\CustomTables::instance();
+
+    // Create tables on every load (safe - uses IF NOT EXISTS)
+    if (!$custom_tables->all_tables_exist()) {
+        $custom_tables->create_all();
+    }
+
+    // Register all admin pages — centralized menu organization
+    add_action('admin_menu', function() {
+        // Top-level dashboard menu
+        add_menu_page(
+            'Certificate Generator',
+            'Certificate Generator',
+            'manage_options',
+            'cg-dashboard',
+            function() {
+                echo '<div class="wrap"><h1>Certificate Generator</h1><p>Use the menu on the left to manage students, teachers, schools, certificates, and settings.</p></div>';
+            },
+            'dashicons-award',
+            25
+        );
+
+        // ── Entity Management ──
+        if (class_exists('\CertificateGenerator\Admin\Pages\StudentsPage')) {
+            (new \CertificateGenerator\Admin\Pages\StudentsPage())->register();
+        }
+        if (class_exists('\CertificateGenerator\Admin\Pages\TeachersPage')) {
+            (new \CertificateGenerator\Admin\Pages\TeachersPage())->register();
+        }
+        if (class_exists('\CertificateGenerator\Admin\Pages\SchoolsPage')) {
+            (new \CertificateGenerator\Admin\Pages\SchoolsPage())->register();
+        }
+        if (class_exists('\CertificateGenerator\Admin\Pages\TemplatesPage')) {
+            (new \CertificateGenerator\Admin\Pages\TemplatesPage())->register();
+        }
+
+        // ── Bulk Operations ──
+        add_submenu_page('cg-dashboard', 'Bulk Import', 'Bulk Import', 'manage_options', 'cg-bulk-import', 'cg_render_bulk_import_page');
+        add_submenu_page('cg-dashboard', 'Bulk Export', 'Bulk Export', 'manage_options', 'cg-bulk-export', 'cg_render_bulk_export_page');
+        add_submenu_page('cg-dashboard', 'Bulk Serial Numbers', 'Bulk Serials', 'manage_options', 'cg-bulk-serials', 'cg_render_bulk_serials_page');
+
+        // ── Email ──
+        add_submenu_page('cg-dashboard', 'Bulk Send Certificates', 'Bulk Send', 'manage_options', 'certificate-bulk-send', 'cg_render_bulk_send_page');
+        add_submenu_page('cg-dashboard', 'Email Logs', 'Email Logs', 'manage_options', 'certificate-email-logs', 'cg_render_email_logs_page');
+
+        // ── Analytics & Settings ──
+        add_submenu_page('cg-dashboard', 'Certificate Analytics', 'Analytics', 'manage_options', 'cg-analytics', 'cg_render_analytics_page');
+        add_submenu_page('cg-dashboard', 'Serial Number Settings', 'Serial Settings', 'manage_options', 'cg-serial-settings', 'cg_render_serial_settings_page');
+
+        // ── Migration (last) ──
+        if (class_exists('\CertificateGenerator\Admin\Pages\MigrationPage')) {
+            (new \CertificateGenerator\Admin\Pages\MigrationPage())->register();
+        }
+    }, 10);
+
+    // Sync hooks - mirror CPT saves to custom tables
+    add_action('save_post_students', function($post_id) {
+        if (defined('DOING_AUTOSAVE') && DOING_AUTOSAVE) return;
+        if (class_exists('\CertificateGenerator\Database\DataMigration')) {
+            (new \CertificateGenerator\Database\DataMigration())->sync_student($post_id);
+        }
+    }, 20);
+
+    add_action('save_post_teachers', function($post_id) {
+        if (defined('DOING_AUTOSAVE') && DOING_AUTOSAVE) return;
+        if (class_exists('\CertificateGenerator\Database\DataMigration')) {
+            (new \CertificateGenerator\Database\DataMigration())->sync_teacher($post_id);
+        }
+    }, 20);
+
+    add_action('save_post_schools', function($post_id) {
+        if (defined('DOING_AUTOSAVE') && DOING_AUTOSAVE) return;
+        if (class_exists('\CertificateGenerator\Database\DataMigration')) {
+            (new \CertificateGenerator\Database\DataMigration())->sync_school($post_id);
+        }
+    }, 20);
+
+    add_action('save_post_certificates', function($post_id) {
+        if (defined('DOING_AUTOSAVE') && DOING_AUTOSAVE) return;
+        if (class_exists('\CertificateGenerator\Database\DataMigration')) {
+            (new \CertificateGenerator\Database\DataMigration())->sync_template($post_id);
+        }
+    }, 20);
 }
 
 // Plugin activation hook
@@ -205,7 +391,17 @@ function certificate_generator_activate() {
             student_name varchar(255) NOT NULL,
             certificate_data text NOT NULL,
             created_at datetime DEFAULT CURRENT_TIMESTAMP NOT NULL,
-            PRIMARY KEY (id)
+            issued_at datetime NULL,
+            expires_at datetime NULL,
+            updated_at datetime NULL,
+            generated_via enum('manual','bulk','api','automatic') DEFAULT 'manual',
+            serial_number varchar(50) NULL,
+            certificate_type varchar(100) NULL,
+            PRIMARY KEY (id),
+            INDEX idx_issued_at (issued_at),
+            INDEX idx_expires_at (expires_at),
+            INDEX idx_serial_number (serial_number),
+            INDEX idx_certificate_type (certificate_type)
         ) $charset_collate;";
 
         $result = dbDelta($sql);
@@ -279,7 +475,7 @@ function certificate_generator_activate() {
             'max_memory_usage' => '64M',
             'enable_error_logging' => true,
             'font_loading_mode' => 'on_demand',
-            'debug_mode' => true // Enable debug mode for new installations
+            'debug_mode' => false
         );
 
         if (!get_option('certificate_generator_settings')) {
@@ -348,9 +544,11 @@ register_activation_hook(__FILE__, 'certificate_generator_activate');
 
 // Plugin deactivation hook
 function certificate_generator_deactivate() {
-    flush_rewrite_rules(); // Flush rewrite rules on deactivation
-    // Clear scheduled cron jobs
+    flush_rewrite_rules();
     wp_clear_scheduled_hook('certificate_generator_cleanup_logs');
+    if (class_exists('CG_Cron_Jobs')) {
+        CG_Cron_Jobs::deactivate();
+    }
 }
 register_deactivation_hook(__FILE__, 'certificate_generator_deactivate');
 
@@ -538,4 +736,109 @@ function certificate_generator_log_debug($message) {
 
 // Add memory monitoring to admin pages
 add_action('admin_init', 'certificate_generator_check_memory_usage');
+
+// ── Centralized page renderers ──
+
+function cg_render_bulk_import_page(): void {
+    if (!current_user_can('manage_options')) wp_die('Insufficient permissions');
+    require_once CERTIFICATE_GENERATOR_PATH . 'includes/Services/bulk-import.php';
+    $tab = sanitize_key($_GET['tab'] ?? 'students');
+    $tabs = ['students' => 'Students', 'teachers' => 'Teachers', 'schools' => 'Schools', 'certificates' => 'Certificates'];
+    $base = admin_url('admin.php?page=cg-bulk-import');
+    ?>
+    <div class="wrap">
+        <h1>Bulk Import</h1>
+        <h2 class="nav-tab-wrapper">
+            <?php foreach ($tabs as $slug => $label): ?>
+                <a href="<?php echo esc_url(add_query_arg('tab', $slug, $base)); ?>"
+                   class="nav-tab <?php echo $tab === $slug ? 'nav-tab-active' : ''; ?>">
+                    <?php echo esc_html($label); ?>
+                </a>
+            <?php endforeach; ?>
+        </h2>
+        <div style="margin-top: 20px;">
+            <?php
+            switch ($tab) {
+                case 'students':     bulk_import_students(); break;
+                case 'teachers':     bulk_import_teachers(); break;
+                case 'schools':      bulk_import_schools(); break;
+                case 'certificates': bulk_import_certificates(); break;
+                default:             bulk_import_students();
+            }
+            ?>
+        </div>
+    </div>
+    <?php
+}
+
+function cg_render_bulk_export_page(): void {
+    if (!current_user_can('manage_options')) wp_die('Insufficient permissions');
+    require_once CERTIFICATE_GENERATOR_PATH . 'includes/Services/bulk-export.php';
+    $tab = sanitize_key($_GET['tab'] ?? 'students');
+    $tabs = ['students' => 'Students', 'teachers' => 'Teachers', 'schools' => 'Schools', 'certificates' => 'Certificates'];
+    $base = admin_url('admin.php?page=cg-bulk-export');
+    ?>
+    <div class="wrap">
+        <h1>Bulk Export</h1>
+        <h2 class="nav-tab-wrapper">
+            <?php foreach ($tabs as $slug => $label): ?>
+                <a href="<?php echo esc_url(add_query_arg('tab', $slug, $base)); ?>"
+                   class="nav-tab <?php echo $tab === $slug ? 'nav-tab-active' : ''; ?>">
+                    <?php echo esc_html($label); ?>
+                </a>
+            <?php endforeach; ?>
+        </h2>
+        <div style="margin-top: 20px;">
+            <?php
+            switch ($tab) {
+                case 'students':     render_bulk_export_students_page(); break;
+                case 'teachers':     render_bulk_export_teachers_page(); break;
+                case 'schools':      render_bulk_export_schools_page(); break;
+                case 'certificates': render_bulk_export_certificates_page(); break;
+                default:             render_bulk_export_students_page();
+            }
+            ?>
+        </div>
+    </div>
+    <?php
+}
+
+function cg_render_bulk_serials_page(): void {
+    $instance = CG_Bulk_Serial_Generator::get_instance();
+    $instance->render_bulk_serial_page();
+}
+
+function cg_render_bulk_send_page(): void {
+    if (function_exists('certificate_generator_bulk_send_page')) {
+        certificate_generator_bulk_send_page();
+    } else {
+        echo '<div class="wrap"><h1>Bulk Send Certificates</h1><p>Bulk send functionality is not available.</p></div>';
+    }
+}
+
+function cg_render_email_logs_page(): void {
+    if (function_exists('certificate_generator_email_logs_page')) {
+        certificate_generator_email_logs_page();
+    } else {
+        echo '<div class="wrap"><h1>Email Logs</h1><p>Email logs functionality is not available.</p></div>';
+    }
+}
+
+function cg_render_analytics_page(): void {
+    if (class_exists('CG_Analytics_Dashboard')) {
+        $instance = CG_Analytics_Dashboard::get_instance();
+        $instance->render_analytics_page();
+    } else {
+        echo '<div class="wrap"><h1>Analytics</h1><p>Analytics functionality is not available.</p></div>';
+    }
+}
+
+function cg_render_serial_settings_page(): void {
+    if (class_exists('CG_Admin_Settings')) {
+        $instance = new CG_Admin_Settings();
+        $instance->render_serial_settings_page();
+    } else {
+        echo '<div class="wrap"><h1>Serial Settings</h1><p>Serial settings functionality is not available.</p></div>';
+    }
+}
 ?>

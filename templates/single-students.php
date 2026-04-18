@@ -16,12 +16,7 @@ while ( have_posts() ) : the_post();
     $certificate_type = get_post_meta( $post_id, 'certificate_type', true );
 
     // Format date for display
-    $display_date = '';
-    if ( $issue_date_raw ) {
-        $dt = DateTime::createFromFormat( 'd-m-Y', $issue_date_raw )
-           ?: DateTime::createFromFormat( 'Y-m-d', $issue_date_raw );
-        $display_date = $dt ? $dt->format( 'F j, Y' ) : esc_html( $issue_date_raw );
-    }
+    $display_date = $issue_date_raw ? cg_format_date($issue_date_raw) : '';
 
     // Nonce-protected download URL (valid ~12 h)
     $download_url = '';

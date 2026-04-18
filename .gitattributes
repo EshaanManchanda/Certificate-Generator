@@ -1,0 +1,16 @@
+# Exclude development files from export
+/.gitattributes export-ignore
+/.editorconfig export-ignore
+/.github/ export-ignore
+/.gitignore export-ignore
+/composer.json export-ignore
+/composer.lock export-ignore
+/phpcs.xml export-ignore
+/phpstan.neon export-ignore
+/phpunit.xml export-ignore
+/tests/ export-ignore
+/plan export-ignore
+/PLAN.md export-ignore
+/IMPROVEMENT-PLAN.md export-ignore
+/CLAUDE.md export-ignore
+/AGENTS.md export-ignore

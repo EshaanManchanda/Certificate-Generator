@@ -17,6 +17,10 @@ wp-content/wp-cache-config.php
 .DS_Store
 Thumbs.db
 /plan
+_dev/
+.playwright/
+CLAUDE.md
+docs/
 
 # Backup files
 *.bak
@@ -34,3 +38,17 @@ package-lock.json
 # Composer
 vendor/
 composer.lock
+
+# PHPUnit
+.phpunit.cache/
+coverage/
+
+# Build output
+assets/dist/
+
+# QR code cache
+wp-content/uploads/cg-qr-codes/
+
+CLAUDE.md
+.claude/
+.code-review-graph/

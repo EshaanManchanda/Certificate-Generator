@@ -1,0 +1,15 @@
+.cg-bulk-serial-page { max-width: 1200px; }
+.cg-bulk-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin: 20px 0; }
+.cg-bulk-stat { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 20px; text-align: center; }
+.cg-bulk-stat-warning { border-left: 4px solid #dba617; }
+.cg-bulk-stat-value { display: block; font-size: 28px; font-weight: 600; color: #2271b1; }
+.cg-bulk-stat-label { display: block; font-size: 13px; color: #646970; margin-top: 5px; }
+.cg-bulk-form-section { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 20px; }
+.cg-bulk-options { margin: 15px 0; display: flex; gap: 20px; flex-wrap: wrap; }
+.cg-bulk-options label { font-size: 14px; cursor: pointer; }
+.cg-bulk-progress-bar { width: 100%; height: 24px; background: #f0f0f1; border-radius: 12px; overflow: hidden; }
+.cg-bulk-progress-fill { height: 100%; background: #2271b1; transition: width 0.3s ease; }
+.cg-bulk-progress-text { text-align: center; margin-top: 8px; font-weight: 500; }
+.cg-bulk-progress-detail { text-align: center; color: #646970; font-size: 13px; }
+.cg-bulk-table-section { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 20px; }
+.cg-bulk-empty { text-align: center; color: #646970; padding: 20px !important; }

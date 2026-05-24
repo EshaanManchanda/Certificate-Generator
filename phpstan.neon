@@ -1,0 +1,20 @@
+parameters:
+    level: 5
+    paths:
+        - src/
+    excludePaths:
+        - vendor/
+        - _dev/
+    bootstrapFiles:
+        - tests/bootstrap-stubs.php
+    scanFiles:
+        - certificate-generator.php
+        - lib/fpdf/fpdf.php
+        - lib/phpqrcode/phpqrcode.php
+        - includes/Admin/bulk-serial.php
+        - includes/Core/field-schema.php
+        - includes/Services/bulk-import.php
+        - includes/Services/bulk-export.php
+    ignoreErrors:
+includes:
+    - vendor/szepeviktor/phpstan-wordpress/extension.neon

@@ -6,32 +6,32 @@
  * @package Certificate Generator
  */
 
-if (!defined('ABSPATH')) {
-    exit;
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
 }
 
 // Schedule WP-Cron event for processing queue
-add_action('init', 'certificate_generator_schedule_queue_processor');
-add_action('certificate_generator_process_email_queue', 'certificate_generator_process_queue_batch');
+add_action( 'init', 'certificate_generator_schedule_queue_processor' );
+add_action( 'certificate_generator_process_email_queue', 'certificate_generator_process_queue_batch' );
 
 /**
  * Schedule recurring queue processor
  */
 function certificate_generator_schedule_queue_processor() {
-    if (!wp_next_scheduled('certificate_generator_process_email_queue')) {
-        // Schedule to run every 5 minutes
-        wp_schedule_event(time(), 'certificate_generator_5min', 'certificate_generator_process_email_queue');
-    }
+	if ( ! wp_next_scheduled( 'certificate_generator_process_email_queue' ) ) {
+		// Schedule to run every 5 minutes
+		wp_schedule_event( time(), 'certificate_generator_5min', 'certificate_generator_process_email_queue' );
+	}
 }
 
 // Add custom cron schedule
-add_filter('cron_schedules', 'certificate_generator_add_cron_schedules');
-function certificate_generator_add_cron_schedules($schedules) {
-    $schedules['certificate_generator_5min'] = [
-        'interval' => 300, // 5 minutes
-        'display' => __('Every 5 Minutes (Certificate Generator)', 'certificate-generator')
-    ];
-    return $schedules;
+add_filter( 'cron_schedules', 'certificate_generator_add_cron_schedules' );
+function certificate_generator_add_cron_schedules( $schedules ) {
+	$schedules['certificate_generator_5min'] = array(
+		'interval' => 300, // 5 minutes
+		'display'  => __( 'Every 5 Minutes (Certificate Generator)', 'certificate-generator' ),
+	);
+	return $schedules;
 }
 
 /**
@@ -41,90 +41,84 @@ function certificate_generator_add_cron_schedules($schedules) {
  * @return array Results
  */
 function certificate_generator_process_queue_batch() {
-    $results = [
-        'processed' => 0,
-        'sent' => 0,
-        'failed' => 0,
-        'skipped' => 0,
-        'errors' => []
-    ];
+	$results = array(
+		'processed' => 0,
+		'sent'      => 0,
+		'failed'    => 0,
+		'skipped'   => 0,
+		'errors'    => array(),
+	);
 
-    // Check if rate limiting allows sending
-    $rate_check = certificate_generator_can_send_email();
+	// Check if rate limiting allows sending
+	$rate_check = certificate_generator_can_send_email();
 
-    if (!$rate_check['can_send']) {
-        error_log("Certificate Generator: Queue processing skipped - {$rate_check['reason']}. Wait: {$rate_check['wait_seconds']}s");
-        return $results;
-    }
+	if ( ! $rate_check['can_send'] ) {
+		error_log( "Certificate Generator: Queue processing skipped - {$rate_check['reason']}. Wait: {$rate_check['wait_seconds']}s" );
+		return $results;
+	}
 
-    // Get batch size from config
-    $config = certificate_generator_get_rate_limit_config();
-    $batch_size = $config['batch_size'];
+	// Get batch size from config
+	$config     = certificate_generator_get_rate_limit_config();
+	$batch_size = $config['batch_size'];
 
-    // Get next batch from queue
-    $emails = certificate_generator_get_next_batch($batch_size);
+	// Get next batch from queue
+	$emails = certificate_generator_get_next_batch( $batch_size );
 
-    if (empty($emails)) {
-        // No emails to process
-        return $results;
-    }
+	if ( empty( $emails ) ) {
+		// No emails to process
+		return $results;
+	}
 
-    error_log("Certificate Generator: Processing batch of " . count($emails) . " emails");
+	if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
+		error_log( 'Certificate Generator: Processing batch of ' . count( $emails ) . ' emails' );
+	}
 
-    foreach ($emails as $queue_item) {
-        $results['processed']++;
+	foreach ( $emails as $queue_item ) {
+		++$results['processed'];
 
-        // Check rate limit before each send
-        $rate_check = certificate_generator_can_send_email();
-        if (!$rate_check['can_send']) {
-            error_log("Certificate Generator: Rate limit reached mid-batch. Stopping. Wait: {$rate_check['wait_seconds']}s");
-            break;
-        }
+		$rate_check = certificate_generator_can_send_email();
+		if ( ! $rate_check['can_send'] ) {
+			error_log( "Certificate Generator: Rate limit reached mid-batch. Stopping. Wait: {$rate_check['wait_seconds']}s" );
+			break;
+		}
 
-        // Mark as sending
-        certificate_generator_update_queue_status($queue_item->id, 'sending');
+		certificate_generator_update_queue_status( $queue_item->id, 'sending' );
 
-        // Send email
-        $sent = certificate_generator_send_email($queue_item->certificate_id, true);
+		$sent = certificate_generator_send_email( $queue_item->certificate_id, true );
 
-        if ($sent) {
-            // Success
-            certificate_generator_update_queue_status($queue_item->id, 'sent');
-            $results['sent']++;
-            error_log("Certificate Generator: Queue item {$queue_item->id} sent successfully");
-        } else {
-            // Failed
-            $error_msg = "Failed to send certificate email";
+		if ( $sent ) {
+			certificate_generator_update_queue_status( $queue_item->id, 'sent' );
+			++$results['sent'];
+		} else {
+			$error_msg = 'Failed to send certificate email';
+			if ( $queue_item->attempts + 1 >= 3 ) {
+				certificate_generator_update_queue_status( $queue_item->id, 'failed', $error_msg );
+				error_log( "Certificate Generator: Queue item {$queue_item->id} permanently failed after 3 attempts (cert_id: {$queue_item->certificate_id})" );
+			} else {
+				certificate_generator_update_queue_status( $queue_item->id, 'pending', $error_msg );
+				if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
+					error_log( "Certificate Generator: Queue item {$queue_item->id} failed attempt {$queue_item->attempts}, will retry" );
+				}
+			}
+			++$results['failed'];
+			$results['errors'][] = "Certificate {$queue_item->certificate_id}: $error_msg";
+		}
 
-            // Check if we should retry or mark as failed
-            if ($queue_item->attempts + 1 >= 3) {
-                certificate_generator_update_queue_status($queue_item->id, 'failed', $error_msg);
-                error_log("Certificate Generator: Queue item {$queue_item->id} failed after 3 attempts");
-            } else {
-                // Reset to pending for retry
-                certificate_generator_update_queue_status($queue_item->id, 'pending', $error_msg);
-                error_log("Certificate Generator: Queue item {$queue_item->id} failed, will retry");
-            }
+		sleep( 2 );
+	}
 
-            $results['failed']++;
-            $results['errors'][] = "Certificate {$queue_item->certificate_id}: $error_msg";
-        }
+	if ( defined( 'WP_DEBUG' ) && WP_DEBUG && $results['processed'] > 0 ) {
+		error_log(
+			sprintf(
+				'Certificate Generator: Batch complete — processed: %d, sent: %d, failed: %d',
+				$results['processed'],
+				$results['sent'],
+				$results['failed']
+			)
+		);
+	}
 
-        // Small delay between sends to avoid overwhelming server
-        sleep(2);
-    }
-
-    // Log summary
-    if ($results['processed'] > 0) {
-        error_log(sprintf(
-            'Certificate Generator: Batch complete - Processed: %d, Sent: %d, Failed: %d',
-            $results['processed'],
-            $results['sent'],
-            $results['failed']
-        ));
-    }
-
-    return $results;
+	return $results;
 }
 
 /**
@@ -133,99 +127,99 @@ function certificate_generator_process_queue_batch() {
  * @param int $num_batches Number of batches to process
  * @return array Combined results
  */
-function certificate_generator_process_queue_now($num_batches = 1) {
-    $total_results = [
-        'processed' => 0,
-        'sent' => 0,
-        'failed' => 0,
-        'skipped' => 0,
-        'errors' => [],
-        'batches' => 0
-    ];
+function certificate_generator_process_queue_now( $num_batches = 1 ) {
+	$total_results = array(
+		'processed' => 0,
+		'sent'      => 0,
+		'failed'    => 0,
+		'skipped'   => 0,
+		'errors'    => array(),
+		'batches'   => 0,
+	);
 
-    for ($i = 0; $i < $num_batches; $i++) {
-        $batch_results = certificate_generator_process_queue_batch();
+	for ( $i = 0; $i < $num_batches; $i++ ) {
+		$batch_results = certificate_generator_process_queue_batch();
 
-        // Combine results
-        $total_results['processed'] += $batch_results['processed'];
-        $total_results['sent'] += $batch_results['sent'];
-        $total_results['failed'] += $batch_results['failed'];
-        $total_results['skipped'] += $batch_results['skipped'];
-        $total_results['errors'] = array_merge($total_results['errors'], $batch_results['errors']);
-        $total_results['batches']++;
+		// Combine results
+		$total_results['processed'] += $batch_results['processed'];
+		$total_results['sent']      += $batch_results['sent'];
+		$total_results['failed']    += $batch_results['failed'];
+		$total_results['skipped']   += $batch_results['skipped'];
+		$total_results['errors']     = array_merge( $total_results['errors'], $batch_results['errors'] );
+		++$total_results['batches'];
 
-        // If no emails were processed, stop
-        if ($batch_results['processed'] === 0) {
-            break;
-        }
+		// If no emails were processed, stop
+		if ( $batch_results['processed'] === 0 ) {
+			break;
+		}
 
-        // Delay between batches
-        if ($i < $num_batches - 1) {
-            $config = certificate_generator_get_rate_limit_config();
-            sleep($config['batch_delay']);
-        }
-    }
+		// Delay between batches
+		if ( $i < $num_batches - 1 ) {
+			$config = certificate_generator_get_rate_limit_config();
+			sleep( $config['batch_delay'] );
+		}
+	}
 
-    return $total_results;
+	return $total_results;
 }
 
 /**
  * Start bulk sending process
  *
  * @param string $post_type Post type (students/teachers/schools)
- * @param array $post_ids Optional specific post IDs
+ * @param array  $post_ids Optional specific post IDs
  * @return array Results
  */
-function certificate_generator_start_bulk_send($post_type, $post_ids = []) {
-    error_log("Certificate Generator: Starting bulk send for post_type: $post_type");
+function certificate_generator_start_bulk_send( $post_type, $post_ids = array() ) {
+	error_log( "Certificate Generator: Starting bulk send for post_type: $post_type" );
 
-    // Add all emails to queue
-    $queue_results = certificate_generator_bulk_queue_emails($post_type, $post_ids);
+	// Add all emails to queue
+	$queue_results = certificate_generator_bulk_queue_emails( $post_type, $post_ids );
 
-    if ($queue_results['queued'] === 0) {
-        return [
-            'success' => false,
-            'message' => 'No emails were queued',
-            'details' => $queue_results
-        ];
-    }
+	if ( $queue_results['queued'] === 0 ) {
+		return array(
+			'success' => false,
+			'message' => 'No emails were queued',
+			'details' => $queue_results,
+		);
+	}
 
-    // Calculate estimate
-    $estimate = certificate_generator_estimate_send_time($queue_results['queued']);
+	// Calculate estimate
+	$estimate = certificate_generator_estimate_send_time( $queue_results['queued'] );
 
-    // Trigger immediate processing of first batch
-    $process_results = certificate_generator_process_queue_batch();
+	// Trigger immediate processing of first batch
+	$process_results = certificate_generator_process_queue_batch();
 
-    return [
-        'success' => true,
-        'message' => sprintf(
-            '%d emails queued successfully. %d sent immediately.',
-            $queue_results['queued'],
-            $process_results['sent']
-        ),
-        'queued' => $queue_results['queued'],
-        'skipped' => $queue_results['skipped'],
-        'sent_immediately' => $process_results['sent'],
-        'estimate' => $estimate
-    ];
+	return array(
+		'success'          => true,
+		'message'          => sprintf(
+			'%d emails queued successfully. %d sent immediately.',
+			$queue_results['queued'],
+			$process_results['sent']
+		),
+		'queued'           => $queue_results['queued'],
+		'skipped'          => $queue_results['skipped'],
+		'sent_immediately' => $process_results['sent'],
+		'estimate'         => $estimate,
+	);
 }
 
 /**
  * Pause queue processing
  */
 function certificate_generator_pause_queue() {
-    update_option('certificate_generator_queue_paused', true);
-    error_log('Certificate Generator: Queue processing paused');
-    return true;
+	update_option( 'certificate_generator_queue_paused', true );
+	error_log( 'Certificate Generator: Queue processing paused' );
+	return true;
 }
 
 /**
  * Resume queue processing
  */
 function certificate_generator_resume_queue() {
-    update_option('certificate_generator_queue_paused', false);
-    error_log('Certificate Generator: Queue processing resumed');
-    return true;
+	update_option( 'certificate_generator_queue_paused', false );
+	error_log( 'Certificate Generator: Queue processing resumed' );
+	return true;
 }
 
 /**
@@ -234,7 +228,7 @@ function certificate_generator_resume_queue() {
  * @return bool
  */
 function certificate_generator_is_queue_paused() {
-    return get_option('certificate_generator_queue_paused', false);
+	return get_option( 'certificate_generator_queue_paused', false );
 }
 
 /**
@@ -243,34 +237,34 @@ function certificate_generator_is_queue_paused() {
  * @return array Progress information
  */
 function certificate_generator_get_queue_progress() {
-    $stats = certificate_generator_get_queue_stats();
-    $rate_status = certificate_generator_get_rate_limit_status();
+	$stats       = certificate_generator_get_queue_stats();
+	$rate_status = certificate_generator_get_rate_limit_status();
 
-    $total = $stats['pending'] + $stats['sent'] + $stats['failed'];
-    $completed = $stats['sent'] + $stats['failed'];
+	$total     = $stats['pending'] + $stats['sent'] + $stats['failed'];
+	$completed = $stats['sent'] + $stats['failed'];
 
-    $progress_percentage = $total > 0 ? ($completed / $total) * 100 : 0;
+	$progress_percentage = $total > 0 ? ( $completed / $total ) * 100 : 0;
 
-    // Calculate ETA
-    $emails_remaining = $stats['pending'];
-    $eta = null;
+	// Calculate ETA
+	$emails_remaining = $stats['pending'];
+	$eta              = null;
 
-    if ($emails_remaining > 0 && !certificate_generator_is_queue_paused()) {
-        $estimate = certificate_generator_estimate_send_time($emails_remaining);
-        $eta = $estimate['estimated_completion'];
-    }
+	if ( $emails_remaining > 0 && ! certificate_generator_is_queue_paused() ) {
+		$estimate = certificate_generator_estimate_send_time( $emails_remaining );
+		$eta      = $estimate['estimated_completion'];
+	}
 
-    return [
-        'stats' => $stats,
-        'rate_status' => $rate_status,
-        'progress_percentage' => round($progress_percentage, 1),
-        'total' => $total,
-        'completed' => $completed,
-        'remaining' => $emails_remaining,
-        'is_paused' => certificate_generator_is_queue_paused(),
-        'eta' => $eta,
-        'eta_human' => $eta ? human_time_diff(strtotime($eta), time()) : null
-    ];
+	return array(
+		'stats'               => $stats,
+		'rate_status'         => $rate_status,
+		'progress_percentage' => round( $progress_percentage, 1 ),
+		'total'               => $total,
+		'completed'           => $completed,
+		'remaining'           => $emails_remaining,
+		'is_paused'           => certificate_generator_is_queue_paused(),
+		'eta'                 => $eta,
+		'eta_human'           => $eta ? human_time_diff( strtotime( $eta ), time() ) : null,
+	);
 }
 
 /**
@@ -279,66 +273,66 @@ function certificate_generator_get_queue_progress() {
  * @return int Number of items cleared
  */
 function certificate_generator_clear_queue() {
-    global $wpdb;
+	global $wpdb;
 
-    $table_name = $wpdb->prefix . 'cert_email_queue';
+	$table_name = $wpdb->prefix . 'cert_email_queue';
 
-    $cleared = $wpdb->query("DELETE FROM $table_name WHERE status = 'pending'");
+	$cleared = $wpdb->query( 'DELETE FROM `' . esc_sql( $table_name ) . "` WHERE status = 'pending'" );
 
-    error_log("Certificate Generator: Cleared $cleared pending emails from queue");
+	error_log( "Certificate Generator: Cleared $cleared pending emails from queue" );
 
-    return $cleared;
+	return $cleared;
 }
 
 /**
  * Admin notice for queue status
  */
-add_action('admin_notices', 'certificate_generator_queue_status_notice');
+add_action( 'admin_notices', 'certificate_generator_queue_status_notice' );
 function certificate_generator_queue_status_notice() {
-    // Only show on certificate-related pages
-    $screen = get_current_screen();
-    if (!$screen || (
-        strpos($screen->id, 'certificate') === false &&
-        strpos($screen->id, 'students') === false &&
-        strpos($screen->id, 'teachers') === false &&
-        strpos($screen->id, 'schools') === false
-    )) {
-        return;
-    }
+	// Only show on certificate-related pages
+	$screen = get_current_screen();
+	if ( ! $screen || (
+		strpos( $screen->id, 'certificate' ) === false &&
+		strpos( $screen->id, 'students' ) === false &&
+		strpos( $screen->id, 'teachers' ) === false &&
+		strpos( $screen->id, 'schools' ) === false
+	) ) {
+		return;
+	}
 
-    $stats = certificate_generator_get_queue_stats();
+	$stats = certificate_generator_get_queue_stats();
 
-    // Show notice if there are pending emails
-    if ($stats['pending'] > 0) {
-        $progress = certificate_generator_get_queue_progress();
+	// Show notice if there are pending emails
+	if ( $stats['pending'] > 0 ) {
+		$progress = certificate_generator_get_queue_progress();
 
-        ?>
-        <div class="notice notice-info is-dismissible">
-            <h3>📧 Certificate Email Queue Status</h3>
-            <p>
-                <strong><?php echo number_format($stats['pending']); ?></strong> emails pending |
-                <strong><?php echo number_format($stats['sent']); ?></strong> sent |
-                <strong><?php echo number_format($stats['failed']); ?></strong> failed
-            </p>
-            <?php if ($progress['eta']): ?>
-                <p>
-                    <strong>Estimated completion:</strong> <?php echo $progress['eta_human']; ?>
-                    (<?php echo $progress['progress_percentage']; ?>% complete)
-                </p>
-            <?php endif; ?>
-            <?php if (certificate_generator_is_queue_paused()): ?>
-                <p style="color: #d63638;">
-                    <strong>⚠️ Queue is PAUSED</strong> - No emails are being sent
-                </p>
-            <?php endif; ?>
-            <?php if (!$progress['rate_status']['can_send']['can_send']): ?>
-                <p style="color: #d63638;">
-                    <strong>⚠️ Rate limit reached:</strong> <?php echo $progress['rate_status']['can_send']['reason']; ?>
-                    - Will resume automatically in <?php echo certificate_generator_format_wait_time($progress['rate_status']['can_send']['wait_seconds']); ?>
-                </p>
-            <?php endif; ?>
-        </div>
-        <?php
-    }
+		?>
+		<div class="notice notice-info is-dismissible">
+			<h3>📧 Certificate Email Queue Status</h3>
+			<p>
+				<strong><?php echo number_format( $stats['pending'] ); ?></strong> emails pending |
+				<strong><?php echo number_format( $stats['sent'] ); ?></strong> sent |
+				<strong><?php echo number_format( $stats['failed'] ); ?></strong> failed
+			</p>
+			<?php if ( $progress['eta'] ) : ?>
+				<p>
+					<strong>Estimated completion:</strong> <?php echo $progress['eta_human']; ?>
+					(<?php echo $progress['progress_percentage']; ?>% complete)
+				</p>
+			<?php endif; ?>
+			<?php if ( certificate_generator_is_queue_paused() ) : ?>
+				<p style="color: #d63638;">
+					<strong>⚠️ Queue is PAUSED</strong> - No emails are being sent
+				</p>
+			<?php endif; ?>
+			<?php if ( ! $progress['rate_status']['can_send']['can_send'] ) : ?>
+				<p style="color: #d63638;">
+					<strong>⚠️ Rate limit reached:</strong> <?php echo $progress['rate_status']['can_send']['reason']; ?>
+					- Will resume automatically in <?php echo certificate_generator_format_wait_time( $progress['rate_status']['can_send']['wait_seconds'] ); ?>
+				</p>
+			<?php endif; ?>
+		</div>
+		<?php
+	}
 }
 ?>

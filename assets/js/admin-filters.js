@@ -473,14 +473,14 @@
         }
 
         startBulkSend() {
-            const self = this;
+            const self   = this;
+            const labels = (typeof certFilterAjax !== 'undefined' && certFilterAjax.i18n) ? certFilterAjax.i18n : {};
 
-            if (!confirm('Are you sure you want to start sending emails to the filtered recipients?')) {
-                return;
-            }
+            const confirmMsg = labels.confirm_send || 'Are you sure you want to start sending emails to the filtered recipients?';
+            if (!confirm(confirmMsg)) return;
 
             const $button = $('#cert-start-bulk-send');
-            $button.prop('disabled', true).text('Starting...');
+            $button.prop('disabled', true).text(labels.starting || 'Starting…');
 
             $.ajax({
                 url: certFilterAjax.ajaxurl,
@@ -491,25 +491,27 @@
                     filters: this.filters
                 },
                 success: function(response) {
-                    if (response.success) {
+                    if (response && response.success && response.data) {
+                        const queued = Number(response.data.queued) || 0;
+                        const msg    = self.escapeHtml(response.data.message || '');
                         $('.cert-preview-content').prepend(
                             '<div class="cert-success-message">' +
-                            'Bulk send started! Queued ' + response.data.queued + ' certificates. ' +
-                            'Processing will continue in the background.' +
-                            '</div>'
+                            (msg || ('Bulk send started! Queued ' + queued + ' certificates.')) +
+                            ' Processing will continue in the background.</div>'
                         );
-                        // Refresh preview
-                        setTimeout(function() {
-                            self.updatePreview();
-                        }, 2000);
+                        setTimeout(function() { self.updatePreview(); }, 2000);
                     } else {
-                        alert('Error: ' + response.data.message);
+                        const errMsg = (response && response.data && response.data.message)
+                            ? response.data.message
+                            : (labels.error_generic || 'An unexpected error occurred.');
+                        alert(self.escapeHtml(errMsg));
                     }
-                    $button.prop('disabled', false).text('🚀 Start Bulk Send');
+                    $button.prop('disabled', false).text(labels.start_btn || '🚀 Start Bulk Send');
                 },
-                error: function() {
-                    alert('Failed to start bulk send. Please try again.');
-                    $button.prop('disabled', false).text('🚀 Start Bulk Send');
+                error: function(xhr) {
+                    console.warn('[CG Bulk Send] AJAX error:', xhr.status, xhr.responseText);
+                    alert(labels.error_send || 'Failed to start bulk send. Please try again.');
+                    $button.prop('disabled', false).text(labels.start_btn || '🚀 Start Bulk Send');
                 }
             });
         }

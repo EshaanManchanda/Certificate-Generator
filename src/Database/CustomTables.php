@@ -9,91 +9,93 @@ namespace CertificateGenerator\Database;
  */
 class CustomTables {
 
-    private static ?CustomTables $instance = null;
-    private array $tables = [];
+	private static ?CustomTables $instance = null;
+	private array $tables                  = array();
 
-    /** @var array<string,bool> Per-request cache for table existence checks. */
-    private static array $_exists_cache = [];
+	/** @var array<string,bool> Per-request cache for table existence checks. */
+	private static array $_exists_cache = array();
 
-    public static function instance(): CustomTables {
-        if (self::$instance === null) {
-            self::$instance = new self();
-        }
-        return self::$instance;
-    }
+	public static function instance(): CustomTables {
+		if ( self::$instance === null ) {
+			self::$instance = new self();
+		}
+		return self::$instance;
+	}
 
-    private function __construct() {
-        global $wpdb;
-        $prefix = $wpdb->prefix . 'cg_';
+	private function __construct() {
+		global $wpdb;
+		$prefix = $wpdb->prefix . 'cg_';
 
-        $this->tables = [
-            'students' => $prefix . 'students',
-            'teachers' => $prefix . 'teachers',
-            'schools' => $prefix . 'schools',
-            'certificate_templates' => $prefix . 'certificate_templates',
-            'certificates' => $prefix . 'certificates',
-            'email_logs' => $prefix . 'email_logs',
-            'email_queue' => $prefix . 'email_queue',
-            'student_certificates' => $prefix . 'student_certificates',
-            'teacher_certificates' => $prefix . 'teacher_certificates',
-            'settings' => $prefix . 'settings',
-            'migrations' => $prefix . 'migrations',
-        ];
-    }
+		$this->tables = array(
+			'students'              => $prefix . 'students',
+			'teachers'              => $prefix . 'teachers',
+			'schools'               => $prefix . 'schools',
+			'certificate_templates' => $prefix . 'certificate_templates',
+			'certificates'          => $prefix . 'certificates',
+			'email_logs'            => $prefix . 'email_logs',
+			'email_queue'           => $prefix . 'email_queue',
+			'student_certificates'  => $prefix . 'student_certificates',
+			'teacher_certificates'  => $prefix . 'teacher_certificates',
+			'settings'              => $prefix . 'settings',
+			'migrations'            => $prefix . 'migrations',
+		);
+	}
 
-    public function get_table(string $name): string {
-        return $this->tables[$name] ?? '';
-    }
+	public function get_table( string $name ): string {
+		return $this->tables[ $name ] ?? '';
+	}
 
-    public function get_all_tables(): array {
-        return $this->tables;
-    }
+	public function get_all_tables(): array {
+		return $this->tables;
+	}
 
-    public function create_all(): void {
-        $this->create_students_table();
-        $this->create_teachers_table();
-        $this->create_schools_table();
-        $this->create_certificate_templates_table();
-        $this->create_certificates_table();
-        $this->create_email_logs_table();
-        $this->create_email_queue_table();
-        $this->create_student_certificates_table();
-        $this->create_teacher_certificates_table();
-        $this->create_settings_table();
-        $this->create_migrations_table();
+	public function create_all(): void {
+		$this->create_students_table();
+		$this->create_teachers_table();
+		$this->create_schools_table();
+		$this->create_certificate_templates_table();
+		$this->create_certificates_table();
+		$this->create_email_logs_table();
+		$this->create_email_queue_table();
+		$this->create_student_certificates_table();
+		$this->create_teacher_certificates_table();
+		$this->create_settings_table();
+		$this->create_migrations_table();
 
-        update_option('cg_custom_tables_version', '1.0.0');
-    }
+		update_option( 'cg_custom_tables_version', '1.0.0' );
+	}
 
-    /**
-     * Check whether a table exists, with a per-request static cache to avoid
-     * repeated SHOW TABLES queries on the same page load.
-     */
-    public function table_exists(string $name): bool {
-        $table = $this->get_table($name);
-        if (empty($table)) return false;
-        if (!isset(self::$_exists_cache[$table])) {
-            global $wpdb;
-            self::$_exists_cache[$table] = ($wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $table)) === $table);
-        }
-        return self::$_exists_cache[$table];
-    }
+	/**
+	 * Check whether a table exists, with a per-request static cache to avoid
+	 * repeated SHOW TABLES queries on the same page load.
+	 */
+	public function table_exists( string $name ): bool {
+		$table = $this->get_table( $name );
+		if ( empty( $table ) ) {
+			return false;
+		}
+		if ( ! isset( self::$_exists_cache[ $table ] ) ) {
+			global $wpdb;
+			self::$_exists_cache[ $table ] = ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) ) === $table );
+		}
+		return self::$_exists_cache[ $table ];
+	}
 
-    public function all_tables_exist(): bool {
-        foreach (array_keys($this->tables) as $name) {
-            if (!$this->table_exists($name)) {
-                return false;
-            }
-        }
-        return true;
-    }
+	public function all_tables_exist(): bool {
+		foreach ( array_keys( $this->tables ) as $name ) {
+			if ( ! $this->table_exists( $name ) ) {
+				return false;
+			}
+		}
+		return true;
+	}
 
-    private function create_students_table(): void {
-        global $wpdb;
-        $table = $this->tables['students'];
-        $charset_collate = $wpdb->get_charset_collate();
+	private function create_students_table(): void {
+		global $wpdb;
+		$table           = $this->tables['students'];
+		$charset_collate = $wpdb->get_charset_collate();
 
-        $sql = "CREATE TABLE IF NOT EXISTS $table (
+		$sql = "CREATE TABLE IF NOT EXISTS $table (
             id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
             wp_post_id BIGINT UNSIGNED DEFAULT NULL,
             student_name VARCHAR(255) NOT NULL,
@@ -119,16 +121,16 @@ class CustomTables {
             INDEX idx_serial_number (serial_number)
         ) $charset_collate;";
 
-        require_once ABSPATH . 'wp-admin/includes/upgrade.php';
-        dbDelta($sql);
-    }
+		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+		dbDelta( $sql );
+	}
 
-    private function create_teachers_table(): void {
-        global $wpdb;
-        $table = $this->tables['teachers'];
-        $charset_collate = $wpdb->get_charset_collate();
+	private function create_teachers_table(): void {
+		global $wpdb;
+		$table           = $this->tables['teachers'];
+		$charset_collate = $wpdb->get_charset_collate();
 
-        $sql = "CREATE TABLE IF NOT EXISTS $table (
+		$sql = "CREATE TABLE IF NOT EXISTS $table (
             id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
             wp_post_id BIGINT UNSIGNED DEFAULT NULL,
             teacher_name VARCHAR(255) NOT NULL,
@@ -154,16 +156,16 @@ class CustomTables {
             INDEX idx_serial_number (serial_number)
         ) $charset_collate;";
 
-        require_once ABSPATH . 'wp-admin/includes/upgrade.php';
-        dbDelta($sql);
-    }
+		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+		dbDelta( $sql );
+	}
 
-    private function create_schools_table(): void {
-        global $wpdb;
-        $table = $this->tables['schools'];
-        $charset_collate = $wpdb->get_charset_collate();
+	private function create_schools_table(): void {
+		global $wpdb;
+		$table           = $this->tables['schools'];
+		$charset_collate = $wpdb->get_charset_collate();
 
-        $sql = "CREATE TABLE IF NOT EXISTS $table (
+		$sql = "CREATE TABLE IF NOT EXISTS $table (
             id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
             wp_post_id BIGINT UNSIGNED DEFAULT NULL,
             school_name VARCHAR(255) NOT NULL,
@@ -191,16 +193,16 @@ class CustomTables {
             INDEX idx_serial_number (serial_number)
         ) $charset_collate;";
 
-        require_once ABSPATH . 'wp-admin/includes/upgrade.php';
-        dbDelta($sql);
-    }
+		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+		dbDelta( $sql );
+	}
 
-    private function create_certificate_templates_table(): void {
-        global $wpdb;
-        $table = $this->tables['certificate_templates'];
-        $charset_collate = $wpdb->get_charset_collate();
+	private function create_certificate_templates_table(): void {
+		global $wpdb;
+		$table           = $this->tables['certificate_templates'];
+		$charset_collate = $wpdb->get_charset_collate();
 
-        $sql = "CREATE TABLE IF NOT EXISTS $table (
+		$sql = "CREATE TABLE IF NOT EXISTS $table (
             id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
             wp_post_id BIGINT UNSIGNED DEFAULT NULL,
             template_name VARCHAR(255) NOT NULL,
@@ -237,16 +239,16 @@ class CustomTables {
             INDEX idx_type_date (certificate_type, event_date)
         ) $charset_collate;";
 
-        require_once ABSPATH . 'wp-admin/includes/upgrade.php';
-        dbDelta($sql);
-    }
+		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+		dbDelta( $sql );
+	}
 
-    private function create_certificates_table(): void {
-        global $wpdb;
-        $table = $this->tables['certificates'];
-        $charset_collate = $wpdb->get_charset_collate();
+	private function create_certificates_table(): void {
+		global $wpdb;
+		$table           = $this->tables['certificates'];
+		$charset_collate = $wpdb->get_charset_collate();
 
-        $sql = "CREATE TABLE IF NOT EXISTS $table (
+		$sql = "CREATE TABLE IF NOT EXISTS $table (
             id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
             wp_post_id BIGINT UNSIGNED DEFAULT NULL,
             template_id BIGINT UNSIGNED DEFAULT NULL,
@@ -287,16 +289,16 @@ class CustomTables {
             INDEX idx_type_issued (certificate_type, issued_at)
         ) $charset_collate;";
 
-        require_once ABSPATH . 'wp-admin/includes/upgrade.php';
-        dbDelta($sql);
-    }
+		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+		dbDelta( $sql );
+	}
 
-    private function create_email_logs_table(): void {
-        global $wpdb;
-        $table = $this->tables['email_logs'];
-        $charset_collate = $wpdb->get_charset_collate();
+	private function create_email_logs_table(): void {
+		global $wpdb;
+		$table           = $this->tables['email_logs'];
+		$charset_collate = $wpdb->get_charset_collate();
 
-        $sql = "CREATE TABLE IF NOT EXISTS $table (
+		$sql = "CREATE TABLE IF NOT EXISTS $table (
             id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
             certificate_id BIGINT UNSIGNED DEFAULT NULL,
             recipient_email VARCHAR(255) NOT NULL,
@@ -315,16 +317,16 @@ class CustomTables {
             INDEX idx_sent_at (sent_at)
         ) $charset_collate;";
 
-        require_once ABSPATH . 'wp-admin/includes/upgrade.php';
-        dbDelta($sql);
-    }
+		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+		dbDelta( $sql );
+	}
 
-    private function create_email_queue_table(): void {
-        global $wpdb;
-        $table = $this->tables['email_queue'];
-        $charset_collate = $wpdb->get_charset_collate();
+	private function create_email_queue_table(): void {
+		global $wpdb;
+		$table           = $this->tables['email_queue'];
+		$charset_collate = $wpdb->get_charset_collate();
 
-        $sql = "CREATE TABLE IF NOT EXISTS $table (
+		$sql = "CREATE TABLE IF NOT EXISTS $table (
             id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
             certificate_id BIGINT UNSIGNED DEFAULT NULL,
             recipient_email VARCHAR(255) NOT NULL,
@@ -345,16 +347,16 @@ class CustomTables {
             INDEX idx_certificate_id (certificate_id)
         ) $charset_collate;";
 
-        require_once ABSPATH . 'wp-admin/includes/upgrade.php';
-        dbDelta($sql);
-    }
+		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+		dbDelta( $sql );
+	}
 
-    private function create_student_certificates_table(): void {
-        global $wpdb;
-        $table = $this->tables['student_certificates'];
-        $charset_collate = $wpdb->get_charset_collate();
+	private function create_student_certificates_table(): void {
+		global $wpdb;
+		$table           = $this->tables['student_certificates'];
+		$charset_collate = $wpdb->get_charset_collate();
 
-        $sql = "CREATE TABLE IF NOT EXISTS $table (
+		$sql = "CREATE TABLE IF NOT EXISTS $table (
             id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
             student_id BIGINT UNSIGNED NOT NULL,
             certificate_id BIGINT UNSIGNED NOT NULL,
@@ -366,16 +368,16 @@ class CustomTables {
             INDEX idx_certificate_id (certificate_id)
         ) $charset_collate;";
 
-        require_once ABSPATH . 'wp-admin/includes/upgrade.php';
-        dbDelta($sql);
-    }
+		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+		dbDelta( $sql );
+	}
 
-    private function create_teacher_certificates_table(): void {
-        global $wpdb;
-        $table = $this->tables['teacher_certificates'];
-        $charset_collate = $wpdb->get_charset_collate();
+	private function create_teacher_certificates_table(): void {
+		global $wpdb;
+		$table           = $this->tables['teacher_certificates'];
+		$charset_collate = $wpdb->get_charset_collate();
 
-        $sql = "CREATE TABLE IF NOT EXISTS $table (
+		$sql = "CREATE TABLE IF NOT EXISTS $table (
             id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
             teacher_id BIGINT UNSIGNED NOT NULL,
             certificate_id BIGINT UNSIGNED NOT NULL,
@@ -387,16 +389,16 @@ class CustomTables {
             INDEX idx_certificate_id (certificate_id)
         ) $charset_collate;";
 
-        require_once ABSPATH . 'wp-admin/includes/upgrade.php';
-        dbDelta($sql);
-    }
+		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+		dbDelta( $sql );
+	}
 
-    private function create_settings_table(): void {
-        global $wpdb;
-        $table = $this->tables['settings'];
-        $charset_collate = $wpdb->get_charset_collate();
+	private function create_settings_table(): void {
+		global $wpdb;
+		$table           = $this->tables['settings'];
+		$charset_collate = $wpdb->get_charset_collate();
 
-        $sql = "CREATE TABLE IF NOT EXISTS $table (
+		$sql = "CREATE TABLE IF NOT EXISTS $table (
             id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
             setting_key VARCHAR(100) NOT NULL UNIQUE,
             setting_value TEXT DEFAULT NULL,
@@ -407,16 +409,16 @@ class CustomTables {
             INDEX idx_setting_key (setting_key)
         ) $charset_collate;";
 
-        require_once ABSPATH . 'wp-admin/includes/upgrade.php';
-        dbDelta($sql);
-    }
+		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+		dbDelta( $sql );
+	}
 
-    private function create_migrations_table(): void {
-        global $wpdb;
-        $table = $this->tables['migrations'];
-        $charset_collate = $wpdb->get_charset_collate();
+	private function create_migrations_table(): void {
+		global $wpdb;
+		$table           = $this->tables['migrations'];
+		$charset_collate = $wpdb->get_charset_collate();
 
-        $sql = "CREATE TABLE IF NOT EXISTS $table (
+		$sql = "CREATE TABLE IF NOT EXISTS $table (
             id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
             migration_name VARCHAR(255) NOT NULL UNIQUE,
             batch INT NOT NULL,
@@ -425,7 +427,7 @@ class CustomTables {
             INDEX idx_batch (batch)
         ) $charset_collate;";
 
-        require_once ABSPATH . 'wp-admin/includes/upgrade.php';
-        dbDelta($sql);
-    }
+		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+		dbDelta( $sql );
+	}
 }

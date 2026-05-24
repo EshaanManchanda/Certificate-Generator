@@ -10,7 +10,7 @@
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
-    exit;
+	exit;
 }
 
 /**
@@ -24,7 +24,7 @@ if ( ! defined( 'ABSPATH' ) ) {
  */
 add_action( 'cg_certificate_generated', 'cg_usage_tracker_on_generate', 10, 2 );
 function cg_usage_tracker_on_generate( int $post_id, string $file_path ): void {
-    CG_License_Manager::increment_usage();
+	CG_License_Manager::increment_usage();
 }
 
 /**
@@ -35,28 +35,32 @@ function cg_usage_tracker_on_generate( int $post_id, string $file_path ): void {
  */
 add_action( 'wp_ajax_cg_check_usage_limit', 'cg_ajax_check_usage_limit' );
 function cg_ajax_check_usage_limit(): void {
-    if ( ! current_user_can( 'manage_options' ) ) {
-        wp_send_json_error( [ 'message' => __( 'Insufficient permissions.', 'certificate-generator' ) ] );
-    }
+	if ( ! current_user_can( 'manage_options' ) ) {
+		wp_send_json_error( array( 'message' => __( 'Insufficient permissions.', 'certificate-generator' ) ) );
+	}
 
-    if ( CG_License_Manager::is_limit_reached() ) {
-        $limit = CG_License_Manager::get_limit();
-        wp_send_json_error( [
-            'message'     => sprintf(
-                /* translators: %d = monthly limit */
-                __( 'Monthly limit of %d certificates reached. Upgrade your plan to generate more.', 'certificate-generator' ),
-                $limit
-            ),
-            'upgrade_url' => 'https://eshaanportfolio.vercel.app/',
-            'limit'       => $limit,
-            'usage'       => CG_License_Manager::get_usage(),
-        ] );
-    }
+	if ( CG_License_Manager::is_limit_reached() ) {
+		$limit = CG_License_Manager::get_limit();
+		wp_send_json_error(
+			array(
+				'message'     => sprintf(
+				/* translators: %d = monthly limit */
+					__( 'Monthly limit of %d certificates reached. Upgrade your plan to generate more.', 'certificate-generator' ),
+					$limit
+				),
+				'upgrade_url' => 'https://eshaanportfolio.vercel.app/',
+				'limit'       => $limit,
+				'usage'       => CG_License_Manager::get_usage(),
+			)
+		);
+	}
 
-    wp_send_json_success( [
-        'usage' => CG_License_Manager::get_usage(),
-        'limit' => CG_License_Manager::get_limit(),
-    ] );
+	wp_send_json_success(
+		array(
+			'usage' => CG_License_Manager::get_usage(),
+			'limit' => CG_License_Manager::get_limit(),
+		)
+	);
 }
 
 /**
@@ -69,14 +73,14 @@ function cg_ajax_check_usage_limit(): void {
  */
 add_filter( 'cg_pre_generate_certificate', 'cg_usage_limit_gate', 10, 1 );
 function cg_usage_limit_gate( $proceed ) {
-    if ( CG_License_Manager::is_limit_reached() ) {
-        return new WP_Error(
-            'usage_limit_reached',
-            sprintf(
-                __( 'Monthly certificate limit of %d reached. Please upgrade your plan.', 'certificate-generator' ),
-                CG_License_Manager::get_limit()
-            )
-        );
-    }
-    return $proceed;
+	if ( CG_License_Manager::is_limit_reached() ) {
+		return new WP_Error(
+			'usage_limit_reached',
+			sprintf(
+				__( 'Monthly certificate limit of %d reached. Please upgrade your plan.', 'certificate-generator' ),
+				CG_License_Manager::get_limit()
+			)
+		);
+	}
+	return $proceed;
 }

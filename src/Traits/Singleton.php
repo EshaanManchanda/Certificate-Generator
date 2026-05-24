@@ -8,24 +8,24 @@ namespace CertificateGenerator\Traits;
  */
 trait Singleton {
 
-    private static ?self $instance = null;
+	private static ?self $instance = null;
 
-    public static function instance(): self {
-        if (self::$instance === null) {
-            self::$instance = new self();
-        }
-        return self::$instance;
-    }
+	public static function instance(): self {
+		if ( self::$instance === null ) {
+			self::$instance = new self();
+		}
+		return self::$instance;
+	}
 
-    private function __construct() {
-        $this->boot();
-    }
+	private function __construct() {
+		$this->boot();
+	}
 
-    private function __clone() {}
+	private function __clone() {}
 
-    public function __wakeup() {
-        throw new \LogicException('Cannot unserialize singleton');
-    }
+	public function __wakeup() {
+		throw new \LogicException( 'Cannot unserialize singleton' );
+	}
 
-    protected function boot(): void {}
+	protected function boot(): void {}
 }

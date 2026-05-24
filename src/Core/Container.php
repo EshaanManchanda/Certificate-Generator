@@ -7,41 +7,41 @@ namespace CertificateGenerator\Core;
  * Simple dependency injection container.
  */
 class Container {
-    private array $bindings = [];
-    private array $instances = [];
+	private array $bindings  = array();
+	private array $instances = array();
 
-    public function bind(string $abstract, callable $concrete): void {
-        $this->bindings[$abstract] = $concrete;
-    }
+	public function bind( string $abstract, callable $concrete ): void {
+		$this->bindings[ $abstract ] = $concrete;
+	}
 
-    public function singleton(string $abstract, callable $concrete): void {
-        $this->bindings[$abstract] = $concrete;
-        $this->bindings[$abstract . ':singleton'] = true;
-    }
+	public function singleton( string $abstract, callable $concrete ): void {
+		$this->bindings[ $abstract ]                = $concrete;
+		$this->bindings[ $abstract . ':singleton' ] = true;
+	}
 
-    public function instance(string $abstract, $instance): void {
-        $this->instances[$abstract] = $instance;
-    }
+	public function instance( string $abstract, $instance ): void {
+		$this->instances[ $abstract ] = $instance;
+	}
 
-    public function make(string $abstract) {
-        if (isset($this->instances[$abstract])) {
-            return $this->instances[$abstract];
-        }
+	public function make( string $abstract ) {
+		if ( isset( $this->instances[ $abstract ] ) ) {
+			return $this->instances[ $abstract ];
+		}
 
-        if (!isset($this->bindings[$abstract])) {
-            throw new \InvalidArgumentException("Binding [{$abstract}] not found in container.");
-        }
+		if ( ! isset( $this->bindings[ $abstract ] ) ) {
+			throw new \InvalidArgumentException( "Binding [{$abstract}] not found in container." );
+		}
 
-        $instance = call_user_func($this->bindings[$abstract], $this);
+		$instance = call_user_func( $this->bindings[ $abstract ], $this );
 
-        if (!empty($this->bindings[$abstract . ':singleton'])) {
-            $this->instances[$abstract] = $instance;
-        }
+		if ( ! empty( $this->bindings[ $abstract . ':singleton' ] ) ) {
+			$this->instances[ $abstract ] = $instance;
+		}
 
-        return $instance;
-    }
+		return $instance;
+	}
 
-    public function has(string $abstract): bool {
-        return isset($this->bindings[$abstract]) || isset($this->instances[$abstract]);
-    }
+	public function has( string $abstract ): bool {
+		return isset( $this->bindings[ $abstract ] ) || isset( $this->instances[ $abstract ] );
+	}
 }

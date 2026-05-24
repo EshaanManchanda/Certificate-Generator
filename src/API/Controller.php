@@ -8,34 +8,50 @@ namespace CertificateGenerator\API;
  */
 abstract class Controller {
 
-    protected string $namespace = 'certificate-generator/v1';
-    protected string $base;
+	protected string $namespace = 'certificate-generator/v1';
+	protected string $base;
 
-    public function __construct(string $base) {
-        $this->base = $base;
-    }
+	public function __construct( string $base ) {
+		$this->base = $base;
+	}
 
-    public function register_routes(): void {
-        register_rest_route($this->namespace, '/' . $this->base, [
-            [
-                'methods' => \WP_REST_Server::READABLE,
-                'callback' => [$this, 'get_items'],
-                'permission_callback' => [$this, 'check_permission'],
-            ],
-        ]);
-    }
+	public function register_routes(): void {
+		register_rest_route(
+			$this->namespace,
+			'/' . $this->base,
+			array(
+				array(
+					'methods'             => \WP_REST_Server::READABLE,
+					'callback'            => array( $this, 'get_items' ),
+					'permission_callback' => array( $this, 'check_permission' ),
+				),
+			)
+		);
+	}
 
-    public function check_permission(): bool {
-        return true;
-    }
+	public function check_permission(): bool {
+		return true;
+	}
 
-    protected function success($data, int $status = 200): \WP_REST_Response {
-        return new \WP_REST_Response(['success' => true, 'data' => $data], $status);
-    }
+	protected function success( $data, int $status = 200 ): \WP_REST_Response {
+		return new \WP_REST_Response(
+			array(
+				'success' => true,
+				'data'    => $data,
+			),
+			$status
+		);
+	}
 
-    protected function error(string $message, int $status = 400): \WP_REST_Response {
-        return new \WP_REST_Response(['success' => false, 'message' => $message], $status);
-    }
+	protected function error( string $message, int $status = 400 ): \WP_REST_Response {
+		return new \WP_REST_Response(
+			array(
+				'success' => false,
+				'message' => $message,
+			),
+			$status
+		);
+	}
 
-    abstract public function get_items($request);
+	abstract public function get_items( $request );
 }

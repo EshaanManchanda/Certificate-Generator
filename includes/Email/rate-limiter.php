@@ -6,8 +6,8 @@
  * @package Certificate Generator
  */
 
-if (!defined('ABSPATH')) {
-    exit;
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
 }
 
 /**
@@ -16,18 +16,18 @@ if (!defined('ABSPATH')) {
  * @return array Rate limit settings
  */
 function certificate_generator_get_rate_limit_config() {
-    // Get custom settings or use defaults
-    $config = get_option('certificate_generator_rate_limits', []);
+	// Get custom settings or use defaults
+	$config = get_option( 'certificate_generator_rate_limits', array() );
 
-    $defaults = [
-        'emails_per_hour' => 80,  // Safe limit (Hostinger typically allows 100-300)
-        'emails_per_minute' => 10, // Burst limit
-        'batch_size' => 10,        // Emails per batch
-        'batch_delay' => 480,      // Seconds between batches (8 minutes)
-        'enabled' => true
-    ];
+	$defaults = array(
+		'emails_per_hour'   => 80,  // Safe limit (Hostinger typically allows 100-300)
+		'emails_per_minute' => 10, // Burst limit
+		'batch_size'        => 10,        // Emails per batch
+		'batch_delay'       => 480,      // Seconds between batches (8 minutes)
+		'enabled'           => true,
+	);
 
-    return wp_parse_args($config, $defaults);
+	return wp_parse_args( $config, $defaults );
 }
 
 /**
@@ -36,36 +36,44 @@ function certificate_generator_get_rate_limit_config() {
  * @return array ['can_send' => bool, 'reason' => string, 'wait_seconds' => int]
  */
 function certificate_generator_can_send_email() {
-    $config = certificate_generator_get_rate_limit_config();
+	$config = certificate_generator_get_rate_limit_config();
 
-    if (!$config['enabled']) {
-        return ['can_send' => true, 'reason' => 'Rate limiting disabled', 'wait_seconds' => 0];
-    }
+	if ( ! $config['enabled'] ) {
+		return array(
+			'can_send'     => true,
+			'reason'       => 'Rate limiting disabled',
+			'wait_seconds' => 0,
+		);
+	}
 
-    // Check hourly limit
-    $sent_last_hour = certificate_generator_get_sent_count(3600); // 1 hour
+	// Check hourly limit
+	$sent_last_hour = certificate_generator_get_sent_count( 3600 ); // 1 hour
 
-    if ($sent_last_hour >= $config['emails_per_hour']) {
-        $wait_seconds = certificate_generator_get_wait_time_for_hourly_reset();
-        return [
-            'can_send' => false,
-            'reason' => "Hourly limit reached ($sent_last_hour/{$config['emails_per_hour']})",
-            'wait_seconds' => $wait_seconds
-        ];
-    }
+	if ( $sent_last_hour >= $config['emails_per_hour'] ) {
+		$wait_seconds = certificate_generator_get_wait_time_for_hourly_reset();
+		return array(
+			'can_send'     => false,
+			'reason'       => "Hourly limit reached ($sent_last_hour/{$config['emails_per_hour']})",
+			'wait_seconds' => $wait_seconds,
+		);
+	}
 
-    // Check per-minute limit (burst protection)
-    $sent_last_minute = certificate_generator_get_sent_count(60); // 1 minute
+	// Check per-minute limit (burst protection)
+	$sent_last_minute = certificate_generator_get_sent_count( 60 ); // 1 minute
 
-    if ($sent_last_minute >= $config['emails_per_minute']) {
-        return [
-            'can_send' => false,
-            'reason' => "Per-minute limit reached ($sent_last_minute/{$config['emails_per_minute']})",
-            'wait_seconds' => 60
-        ];
-    }
+	if ( $sent_last_minute >= $config['emails_per_minute'] ) {
+		return array(
+			'can_send'     => false,
+			'reason'       => "Per-minute limit reached ($sent_last_minute/{$config['emails_per_minute']})",
+			'wait_seconds' => 60,
+		);
+	}
 
-    return ['can_send' => true, 'reason' => 'Within rate limits', 'wait_seconds' => 0];
+	return array(
+		'can_send'     => true,
+		'reason'       => 'Within rate limits',
+		'wait_seconds' => 0,
+	);
 }
 
 /**
@@ -78,26 +86,32 @@ function certificate_generator_can_send_email() {
  * @param int $seconds Number of seconds to look back
  * @return int Number of unique emails sent
  */
-function certificate_generator_get_sent_count($seconds = 3600) {
-    global $wpdb;
+function certificate_generator_get_sent_count( $seconds = 3600 ) {
+	$cache_key = 'cg_sent_count_' . $seconds;
+	$cached    = get_transient( $cache_key );
+	if ( $cached !== false ) {
+		return (int) $cached;
+	}
 
-    $table_name = $wpdb->prefix . 'cert_email_logs';
-    $since = date('Y-m-d H:i:s', time() - $seconds);
+	global $wpdb;
+	$table_name = $wpdb->prefix . 'cert_email_logs';
+	$since      = date( 'Y-m-d H:i:s', time() - $seconds );
 
-    // Count DISTINCT emails grouped by recipient and send time (per minute)
-    // This prevents counting 182 certificates to the same email as 182 emails
-    $count = $wpdb->get_var($wpdb->prepare(
-        "SELECT COUNT(*)
+	$count = $wpdb->get_var(
+		$wpdb->prepare(
+			"SELECT COUNT(*)
          FROM (
              SELECT DISTINCT recipient_email, DATE_FORMAT(sent_at, '%%Y-%%m-%%d %%H:%%i') as send_time
              FROM $table_name
              WHERE status = 'sent'
              AND sent_at >= %s
          ) as unique_sends",
-        $since
-    ));
+			$since
+		)
+	);
 
-    return (int) $count;
+	set_transient( $cache_key, (int) $count, 30 );
+	return (int) $count;
 }
 
 /**
@@ -106,30 +120,32 @@ function certificate_generator_get_sent_count($seconds = 3600) {
  * @return int Seconds to wait
  */
 function certificate_generator_get_wait_time_for_hourly_reset() {
-    global $wpdb;
+	global $wpdb;
 
-    $table_name = $wpdb->prefix . 'cert_email_logs';
-    $one_hour_ago = date('Y-m-d H:i:s', time() - 3600);
+	$table_name   = $wpdb->prefix . 'cert_email_logs';
+	$one_hour_ago = date( 'Y-m-d H:i:s', time() - 3600 );
 
-    // Get oldest email sent in the last hour
-    $oldest = $wpdb->get_var($wpdb->prepare(
-        "SELECT sent_at FROM $table_name
+	// Get oldest email sent in the last hour
+	$oldest = $wpdb->get_var(
+		$wpdb->prepare(
+			"SELECT sent_at FROM $table_name
          WHERE status = 'sent'
          AND sent_at >= %s
          ORDER BY sent_at ASC
          LIMIT 1",
-        $one_hour_ago
-    ));
+			$one_hour_ago
+		)
+	);
 
-    if (!$oldest) {
-        return 0; // No emails in last hour
-    }
+	if ( ! $oldest ) {
+		return 0; // No emails in last hour
+	}
 
-    $oldest_time = strtotime($oldest);
-    $reset_time = $oldest_time + 3600; // 1 hour after oldest
-    $wait_seconds = max(0, $reset_time - time());
+	$oldest_time  = strtotime( $oldest );
+	$reset_time   = $oldest_time + 3600; // 1 hour after oldest
+	$wait_seconds = max( 0, $reset_time - time() );
 
-    return $wait_seconds;
+	return $wait_seconds;
 }
 
 /**
@@ -139,10 +155,10 @@ function certificate_generator_get_wait_time_for_hourly_reset() {
  * @param int $post_id Certificate post ID
  * @return bool Success
  */
-function certificate_generator_record_email_send($post_id) {
-    // This is already handled by certificate_generator_log_email()
-    // Just here for clarity/documentation
-    return true;
+function certificate_generator_record_email_send( $post_id ) {
+	// This is already handled by certificate_generator_log_email()
+	// Just here for clarity/documentation
+	return true;
 }
 
 /**
@@ -151,35 +167,35 @@ function certificate_generator_record_email_send($post_id) {
  * @return array Status information
  */
 function certificate_generator_get_rate_limit_status() {
-    $config = certificate_generator_get_rate_limit_config();
+	$config = certificate_generator_get_rate_limit_config();
 
-    $sent_last_hour = certificate_generator_get_sent_count(3600);
-    $sent_last_minute = certificate_generator_get_sent_count(60);
+	$sent_last_hour   = certificate_generator_get_sent_count( 3600 );
+	$sent_last_minute = certificate_generator_get_sent_count( 60 );
 
-    $hourly_remaining = max(0, $config['emails_per_hour'] - $sent_last_hour);
-    $hourly_percentage = ($sent_last_hour / $config['emails_per_hour']) * 100;
+	$hourly_remaining  = max( 0, $config['emails_per_hour'] - $sent_last_hour );
+	$hourly_percentage = ( $sent_last_hour / $config['emails_per_hour'] ) * 100;
 
-    $status = [
-        'enabled' => $config['enabled'],
-        'limits' => $config,
-        'usage' => [
-            'last_hour' => $sent_last_hour,
-            'last_minute' => $sent_last_minute,
-            'hourly_limit' => $config['emails_per_hour'],
-            'hourly_remaining' => $hourly_remaining,
-            'hourly_percentage' => round($hourly_percentage, 1)
-        ],
-        'can_send' => certificate_generator_can_send_email()
-    ];
+	$status = array(
+		'enabled'  => $config['enabled'],
+		'limits'   => $config,
+		'usage'    => array(
+			'last_hour'         => $sent_last_hour,
+			'last_minute'       => $sent_last_minute,
+			'hourly_limit'      => $config['emails_per_hour'],
+			'hourly_remaining'  => $hourly_remaining,
+			'hourly_percentage' => round( $hourly_percentage, 1 ),
+		),
+		'can_send' => certificate_generator_can_send_email(),
+	);
 
-    // Add warning if approaching limit
-    if ($hourly_percentage >= 90) {
-        $status['warning'] = 'Approaching hourly limit';
-    } elseif ($hourly_percentage >= 75) {
-        $status['warning'] = 'High email volume';
-    }
+	// Add warning if approaching limit
+	if ( $hourly_percentage >= 90 ) {
+		$status['warning'] = 'Approaching hourly limit';
+	} elseif ( $hourly_percentage >= 75 ) {
+		$status['warning'] = 'High email volume';
+	}
 
-    return $status;
+	return $status;
 }
 
 /**
@@ -188,23 +204,23 @@ function certificate_generator_get_rate_limit_status() {
  * @param int $num_emails Number of emails to send
  * @return array Estimation details
  */
-function certificate_generator_estimate_send_time($num_emails) {
-    $config = certificate_generator_get_rate_limit_config();
+function certificate_generator_estimate_send_time( $num_emails ) {
+	$config = certificate_generator_get_rate_limit_config();
 
-    $emails_per_hour = $config['emails_per_hour'];
-    $hours_needed = ceil($num_emails / $emails_per_hour);
+	$emails_per_hour = $config['emails_per_hour'];
+	$hours_needed    = ceil( $num_emails / $emails_per_hour );
 
-    $start_time = time();
-    $end_time = $start_time + ($hours_needed * 3600);
+	$start_time = time();
+	$end_time   = $start_time + ( $hours_needed * 3600 );
 
-    return [
-        'num_emails' => $num_emails,
-        'emails_per_hour' => $emails_per_hour,
-        'hours_needed' => $hours_needed,
-        'estimated_completion' => date('Y-m-d H:i:s', $end_time),
-        'estimated_completion_human' => human_time_diff($start_time, $end_time),
-        'start_time' => date('Y-m-d H:i:s', $start_time)
-    ];
+	return array(
+		'num_emails'                 => $num_emails,
+		'emails_per_hour'            => $emails_per_hour,
+		'hours_needed'               => $hours_needed,
+		'estimated_completion'       => date( 'Y-m-d H:i:s', $end_time ),
+		'estimated_completion_human' => human_time_diff( $start_time, $end_time ),
+		'start_time'                 => date( 'Y-m-d H:i:s', $start_time ),
+	);
 }
 
 /**
@@ -213,13 +229,11 @@ function certificate_generator_estimate_send_time($num_emails) {
  * @return bool Success
  */
 function certificate_generator_reset_rate_limits() {
-    // Clear transients used for rate limiting
-    delete_transient('cert_gen_rate_limit_hour');
-    delete_transient('cert_gen_rate_limit_minute');
+	// Clear transients used for rate limiting
+	delete_transient( 'cert_gen_rate_limit_hour' );
+	delete_transient( 'cert_gen_rate_limit_minute' );
 
-    error_log('Certificate Generator: Rate limit counters reset');
-
-    return true;
+	return true;
 }
 
 /**
@@ -228,23 +242,23 @@ function certificate_generator_reset_rate_limits() {
  * @param array $config New configuration
  * @return bool Success
  */
-function certificate_generator_update_rate_limit_config($config) {
-    $current = certificate_generator_get_rate_limit_config();
-    $updated = wp_parse_args($config, $current);
+function certificate_generator_update_rate_limit_config( $config ) {
+	$current = certificate_generator_get_rate_limit_config();
+	$updated = wp_parse_args( $config, $current );
 
-    // Validate limits
-    $updated['emails_per_hour'] = max(10, min(300, (int) $updated['emails_per_hour']));
-    $updated['emails_per_minute'] = max(1, min(50, (int) $updated['emails_per_minute']));
-    $updated['batch_size'] = max(1, min(50, (int) $updated['batch_size']));
-    $updated['batch_delay'] = max(10, min(3600, (int) $updated['batch_delay']));
+	// Validate limits
+	$updated['emails_per_hour']   = max( 10, min( 300, (int) $updated['emails_per_hour'] ) );
+	$updated['emails_per_minute'] = max( 1, min( 50, (int) $updated['emails_per_minute'] ) );
+	$updated['batch_size']        = max( 1, min( 50, (int) $updated['batch_size'] ) );
+	$updated['batch_delay']       = max( 10, min( 3600, (int) $updated['batch_delay'] ) );
 
-    $result = update_option('certificate_generator_rate_limits', $updated);
+	$result = update_option( 'certificate_generator_rate_limits', $updated );
 
-    if (defined('WP_DEBUG') && WP_DEBUG) {
-        error_log('Certificate Generator Debug - Rate limit config updated: ' . print_r($updated, true));
-    }
+	if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
+		error_log( 'Certificate Generator Debug - Rate limit config updated: ' . print_r( $updated, true ) );
+	}
 
-    return $result;
+	return $result;
 }
 
 /**
@@ -253,15 +267,14 @@ function certificate_generator_update_rate_limit_config($config) {
  * @param int $seconds Seconds remaining
  * @return string Human-readable time
  */
-function certificate_generator_format_wait_time($seconds) {
-    if ($seconds < 60) {
-        return sprintf(__('%d seconds', 'certificate-generator'), $seconds);
-    } elseif ($seconds < 3600) {
-        $minutes = ceil($seconds / 60);
-        return sprintf(__('%d minutes', 'certificate-generator'), $minutes);
-    } else {
-        $hours = ceil($seconds / 3600);
-        return sprintf(__('%d hours', 'certificate-generator'), $hours);
-    }
+function certificate_generator_format_wait_time( $seconds ) {
+	if ( $seconds < 60 ) {
+		return sprintf( __( '%d seconds', 'certificate-generator' ), $seconds );
+	} elseif ( $seconds < 3600 ) {
+		$minutes = ceil( $seconds / 60 );
+		return sprintf( __( '%d minutes', 'certificate-generator' ), $minutes );
+	} else {
+		$hours = ceil( $seconds / 3600 );
+		return sprintf( __( '%d hours', 'certificate-generator' ), $hours );
+	}
 }
-?>

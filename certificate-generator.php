@@ -3,7 +3,10 @@
  * Plugin Name:       Certificate Generator
  * Plugin URI:        https://github.com/eshaanmanchanda/certificate-generator
  * Description:       A comprehensive plugin for managing, generating, and bulk-sending certificates for students and teachers.
- * Version:           6.1.0
+ * Version:           7.0.0
+ * Requires at least: 6.0
+ * Requires PHP:      8.0
+ * Tested up to:      6.7
  * Author:            Eshaan Manchanda
  * Author URI:        https://www.linkedin.com/in/eshaan-manchanda/
  * License:           GPL-2.0+
@@ -24,7 +27,7 @@ define('CERTIFICATE_GENERATOR_URL', plugin_dir_url(__FILE__));
 add_filter('plugin_action_links_' . plugin_basename(__FILE__), function(array $links): array {
     $custom = [
         'settings' => '<a href="' . admin_url('options-general.php?page=certificate_generator_settings') . '">Settings</a>',
-        'docs'     => '<a href="https://github.com/eshaanmanchanda/certificate-generator#readme" target="_blank">Docs</a>',
+        'docs'     => '<a href="https://github.com/EshaanManchanda/Certificate-Generator/tree/master" target="_blank">Docs</a>',
         'get_pro'  => '<a href="https://eshaanportfolio.vercel.app/" target="_blank" style="color:#d63638;font-weight:600;">Get Pro</a>',
     ];
     return array_merge($custom, $links);
@@ -48,7 +51,13 @@ function cg_format_date(?string $date_string, bool $include_time = false): strin
 // Enqueue CSS and JS for Admin UI
 function custom_admin_assets($hook) {
     wp_enqueue_style('custom-admin-css', plugin_dir_url(__FILE__) . 'assets/css/admin-style.css');
-    wp_enqueue_script('custom-admin-js', plugin_dir_url(__FILE__) . 'assets/js/admin-script.js', ['jquery'], '6.0.1', true);
+    wp_enqueue_script('custom-admin-js', plugin_dir_url(__FILE__) . 'assets/js/admin-script.js', ['jquery'], '7.0.0', true);
+
+    // Shared media uploader — enqueued on all CG admin pages where images may be selected.
+    if (strpos($hook, 'cg-') !== false || strpos($hook, 'certificate') !== false) {
+        wp_enqueue_media();
+        wp_enqueue_script('cg-media-uploader', plugin_dir_url(__FILE__) . 'assets/js/cg-media-uploader.js', ['jquery'], '1.0.0', true);
+    }
 
     // Enqueue filter assets on specific admin pages
     $filter_pages = ['settings_page_certificate-bulk-send', 'settings_page_certificate-email-logs', 'edit-students', 'edit-teachers', 'edit-schools'];
@@ -57,10 +66,16 @@ function custom_admin_assets($hook) {
         wp_enqueue_style('cert-filters-css', plugin_dir_url(__FILE__) . 'assets/css/admin-filters.css', [], '1.0.13');
         wp_enqueue_script('cert-filters-js', plugin_dir_url(__FILE__) . 'assets/js/admin-filters.js', ['jquery'], '1.0.13', true);
 
-        // Localize script for AJAX
         wp_localize_script('cert-filters-js', 'certFilterAjax', [
             'ajaxurl' => admin_url('admin-ajax.php'),
-            'nonce' => wp_create_nonce('cert_bulk_send')
+            'nonce'   => wp_create_nonce('cert_bulk_send'),
+            'i18n'    => [
+                'confirm_send'  => __('Are you sure you want to start sending emails to the filtered recipients?', 'certificate-generator'),
+                'starting'      => __('Starting…', 'certificate-generator'),
+                'start_btn'     => __('🚀 Start Bulk Send', 'certificate-generator'),
+                'error_generic' => __('An unexpected error occurred.', 'certificate-generator'),
+                'error_send'    => __('Failed to start bulk send. Please try again.', 'certificate-generator'),
+            ],
         ]);
     }
 
@@ -78,8 +93,6 @@ add_action('admin_enqueue_scripts', 'custom_admin_assets');
 $critical_files = [
     'includes/Core/server-compatibility.php' => 'Server compatibility checker',
     'includes/Core/error-reporting.php' => 'Error reporting system',
-    'includes/Core/installation-debug.php' => 'Installation debug system',
-    'includes/Core/server-diagnostic.php' => 'Server diagnostic tools'
 ];
 
 $optional_files = [
@@ -96,6 +109,7 @@ $optional_files = [
     'includes/Admin/settings.php' => 'Admin settings',
     'includes/Admin/columns.php' => 'Admin columns',
     'includes/API/endpoints.php' => 'API endpoints',
+    'includes/API/payment-endpoints.php' => 'Payment API endpoints',
     'includes/Email/functions.php' => 'Email functions',
     'includes/Email/log.php' => 'Email logging',
     'includes/Admin/email-logs.php' => 'Admin email logs',
@@ -104,8 +118,6 @@ $optional_files = [
     'includes/Services/bulk-email-sender.php' => 'Bulk email sender',
     'includes/Admin/bulk-email.php' => 'Bulk email admin page',
     'includes/Admin/filters-api.php' => 'Admin filters API',
-    'includes/Admin/debug-dashboard.php' => 'Debug dashboard interface',
-    'includes/Core/installation-recovery.php' => 'Installation recovery tools',
     'includes/Admin/integration-dashboard.php' => 'Integration health dashboard widget',
     'includes/Public/student-template.php' => 'Student public profile template',
     'includes/Database/migrator.php' => 'Database migrator',
@@ -115,7 +127,8 @@ $optional_files = [
     'includes/Admin/analytics.php' => 'Analytics dashboard',
     'includes/Admin/bulk-serial.php' => 'Bulk serial generator',
     'includes/Public/verification.php' => 'Public verification page',
-    'includes/Cron/jobs.php' => 'Scheduled cron jobs'
+    'includes/Cron/jobs.php' => 'Scheduled cron jobs',
+    'includes/Admin/documentation.php' => 'Documentation & getting started page',
 ];
 
 $missing_critical_files = [];
@@ -282,10 +295,20 @@ if (class_exists('\CertificateGenerator\Database\CustomTables')) {
         add_submenu_page('cg-dashboard', 'Certificate Analytics', 'Analytics', 'manage_options', 'cg-analytics', 'cg_render_analytics_page');
         add_submenu_page('cg-dashboard', 'Serial Number Settings', 'Serial Settings', 'manage_options', 'cg-serial-settings', 'cg_render_serial_settings_page');
 
-        // ── Migration (last) ──
+        // ── Migration ──
         if (class_exists('\CertificateGenerator\Admin\Pages\MigrationPage')) {
             (new \CertificateGenerator\Admin\Pages\MigrationPage())->register();
         }
+
+        // ── Documentation & Getting Started (always last) ──
+        add_submenu_page(
+            'cg-dashboard',
+            'Documentation',
+            '📖 Documentation',
+            'manage_options',
+            'cg-documentation',
+            'cg_render_documentation_page'
+        );
     }, 10);
 
     // Sync hooks - mirror CPT saves to custom tables
@@ -321,68 +344,30 @@ if (class_exists('\CertificateGenerator\Database\CustomTables')) {
 // Plugin activation hook
 function certificate_generator_activate() {
     try {
-        // Initialize debug system for activation tracking
-        if (function_exists('certificate_generator_debug')) {
-            $debug = certificate_generator_debug();
-            $debug->start_debug_session();
-            $debug->log_step(1, 'started', 'Plugin activation initiated');
-        }
-
         // Run compatibility check first
         if (function_exists('certificate_generator_quick_compatibility_check')) {
-            cert_gen_debug_log('Running server compatibility check', 'INFO');
             $compatibility = certificate_generator_quick_compatibility_check();
 
             if (!$compatibility['compatible']) {
                 $error_message = 'Certificate Generator cannot be activated due to server compatibility issues: ' .
                                implode(', ', $compatibility['errors']);
 
-                cert_gen_debug_error('Activation failed: ' . $error_message);
-                cert_gen_debug_step(1, 'failed', $error_message);
-
-                // Store error for admin display
                 update_option('certificate_generator_activation_error', $error_message);
-
-                // Deactivate the plugin and show error
                 deactivate_plugins(plugin_basename(__FILE__));
                 wp_die($error_message . '<br><br><a href="' . admin_url('plugins.php') . '">Return to Plugins</a>');
             }
 
-            cert_gen_debug_step(1, 'passed', 'Server compatibility verified');
-            // Store compatibility results for admin notices
             update_option('certificate_generator_compatibility', $compatibility);
         }
 
         global $wpdb;
-
-        // Step 2: File system permissions check
-        cert_gen_debug_step(2, 'started', 'Checking file system permissions');
-        if (function_exists('certificate_generator_debug')) {
-            $debug = certificate_generator_debug();
-            if (!$debug->test_file_permissions()) {
-                cert_gen_debug_step(2, 'warning', 'File permission issues detected');
-            } else {
-                cert_gen_debug_step(2, 'passed', 'File permissions adequate');
-            }
-        }
-
-        // Step 3: Database connectivity test
-        cert_gen_debug_step(3, 'started', 'Testing database connectivity');
-        if (function_exists('certificate_generator_debug')) {
-            $debug = certificate_generator_debug();
-            if (!$debug->test_database_connection()) {
-                throw new Exception('Database connectivity test failed');
-            }
-            cert_gen_debug_step(3, 'passed', 'Database connection verified');
-        }
 
         // Verify required WordPress functions exist
         if (!function_exists('dbDelta')) {
             require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
         }
 
-        // Step 8: Create database table with error handling
-        cert_gen_debug_step(8, 'started', 'Creating database table');
+        // Create the primary database table
         $table_name = $wpdb->prefix . 'certificate_generator';
         $charset_collate = $wpdb->get_charset_collate();
 
@@ -408,59 +393,33 @@ function certificate_generator_activate() {
 
         // Check if table was created successfully
         if ($wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s", $table_name)) != $table_name) {
-            cert_gen_debug_error('Failed to create database table with dbDelta, trying alternative method');
-
             // Try alternative method
             $wpdb->query($sql);
 
             if ($wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s", $table_name)) != $table_name) {
-                cert_gen_debug_step(8, 'failed', 'Database table creation failed');
                 throw new Exception('Failed to create required database table. Please check database permissions.');
             }
         }
 
-        cert_gen_debug_step(8, 'passed', 'Database table created successfully');
-
-        // Step 8.1: Create email log table
-        cert_gen_debug_step('8.1', 'started', 'Creating email log table');
+        // Create email log table
         if (function_exists('certificate_generator_create_email_log_table')) {
             certificate_generator_create_email_log_table();
-
-            // Verify table was created
-            $email_log_table = $wpdb->prefix . 'cert_email_logs';
-            if ($wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s", $email_log_table)) == $email_log_table) {
-                cert_gen_debug_step('8.1', 'passed', 'Email log table created successfully');
-            } else {
-                cert_gen_debug_step('8.1', 'warning', 'Email log table creation uncertain');
-            }
-        } else {
-            cert_gen_debug_step('8.1', 'warning', 'Email log table creation function not available');
         }
 
-        // Step 8.2: Create email queue table
-        cert_gen_debug_step('8.2', 'started', 'Creating email queue table');
+        // Create email queue table
         if (function_exists('certificate_generator_create_email_queue_table')) {
             certificate_generator_create_email_queue_table();
-
-            // Verify table was created
-            $email_queue_table = $wpdb->prefix . 'cert_email_queue';
-            if ($wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s", $email_queue_table)) == $email_queue_table) {
-                cert_gen_debug_step('8.2', 'passed', 'Email queue table created successfully');
-            } else {
-                cert_gen_debug_step('8.2', 'warning', 'Email queue table creation uncertain');
-            }
-        } else {
-            cert_gen_debug_step('8.2', 'warning', 'Email queue table creation function not available');
         }
 
-        // Step 9: Initial settings setup
-        cert_gen_debug_step(9, 'started', 'Setting up initial configuration');
-
         // Set plugin version
-        update_option('certificate_generator_version', '6.0.1');
+        update_option('certificate_generator_version', '7.0.0');
 
         // Set activation timestamp
         update_option('certificate_generator_activated_at', current_time('timestamp'));
+
+        // Show welcome banner on next admin load
+        delete_option('cg_welcome_dismissed');
+        set_transient('cg_activation_redirect', 1, 30);
 
         // Determine installation mode based on server capabilities
         $installation_mode = 'minimal'; // Safe default
@@ -482,58 +441,37 @@ function certificate_generator_activate() {
             update_option('certificate_generator_settings', $default_settings);
         }
 
-        cert_gen_debug_step(9, 'passed', "Initial settings configured (mode: $installation_mode)");
-
-        // Step 11: Admin interface setup
-        cert_gen_debug_step(11, 'started', 'Setting up admin interface');
+        // Schedule license heartbeat + monthly usage reset cron.
+        if ( class_exists( 'CG_License_Manager' ) ) {
+            CG_License_Manager::schedule_cron();
+        }
 
         // Flush rewrite rules
         flush_rewrite_rules();
 
-        cert_gen_debug_step(11, 'passed', 'Admin interface setup completed');
-
-        // Step 12: Final verification
-        cert_gen_debug_step(12, 'started', 'Running final verification');
-
         // Clear any previous activation errors
         delete_option('certificate_generator_activation_error');
 
-        // Log successful activation
-        cert_gen_debug_log('Plugin activation completed successfully', 'INFO');
-        cert_gen_debug_step(12, 'passed', 'Plugin activation completed successfully');
-        error_log('Certificate Generator: Plugin activated successfully');
+        error_log('Certificate Generator: Plugin activated successfully.');
 
     } catch (Exception $e) {
-        // Log the error with debug system
-        cert_gen_debug_error('Plugin activation failed: ' . $e->getMessage(), $e);
         error_log('Certificate Generator Activation Error: ' . $e->getMessage());
 
-        // Store detailed error information for admin display
-        $error_details = array(
-            'message' => $e->getMessage(),
-            'timestamp' => current_time('mysql'),
-            'step' => get_option('cert_gen_debug_current_step', 'unknown'),
-            'php_version' => PHP_VERSION,
-            'wp_version' => get_bloginfo('version'),
+        update_option('certificate_generator_activation_error', [
+            'message'      => $e->getMessage(),
+            'timestamp'    => current_time('mysql'),
+            'php_version'  => PHP_VERSION,
+            'wp_version'   => get_bloginfo('version'),
             'memory_limit' => ini_get('memory_limit'),
-            'debug_data_available' => true
-        );
+        ]);
 
-        update_option('certificate_generator_activation_error', $error_details);
-
-        // Deactivate the plugin
         deactivate_plugins(plugin_basename(__FILE__));
 
-        // Show enhanced error message with debug information
-        $debug_url = admin_url('admin.php?page=cert-gen-debug-dashboard');
-        $error_message = 'Certificate Generator could not be activated: ' . $e->getMessage();
-        $error_message .= '<br><br><strong>Debug Information Available:</strong>';
+        $error_message  = 'Certificate Generator could not be activated: ' . $e->getMessage();
         $error_message .= '<br>• PHP Version: ' . PHP_VERSION;
         $error_message .= '<br>• WordPress Version: ' . get_bloginfo('version');
         $error_message .= '<br>• Memory Limit: ' . ini_get('memory_limit');
-        $error_message .= '<br>• Failed at Step: ' . get_option('cert_gen_debug_current_step', 'Unknown');
-        $error_message .= '<br><br><a href="' . $debug_url . '" class="button button-primary">View Debug Dashboard</a> ';
-        $error_message .= '<a href="' . admin_url('plugins.php') . '" class="button">Return to Plugins</a>';
+        $error_message .= '<br><br><a href="' . admin_url('plugins.php') . '" class="button">Return to Plugins</a>';
 
         wp_die($error_message);
     }
@@ -542,12 +480,24 @@ function certificate_generator_activate() {
 // Register the activation hook
 register_activation_hook(__FILE__, 'certificate_generator_activate');
 
+// Redirect to Getting Started page after activation (fires once, then clears)
+add_action('admin_init', function () {
+    if (!get_transient('cg_activation_redirect')) return;
+    delete_transient('cg_activation_redirect');
+    if (isset($_GET['activate-multi'])) return; // skip on bulk activate
+    wp_safe_redirect(admin_url('admin.php?page=cg-documentation&tab=getting-started'));
+    exit;
+});
+
 // Plugin deactivation hook
 function certificate_generator_deactivate() {
     flush_rewrite_rules();
     wp_clear_scheduled_hook('certificate_generator_cleanup_logs');
     if (class_exists('CG_Cron_Jobs')) {
         CG_Cron_Jobs::deactivate();
+    }
+    if ( class_exists( 'CG_License_Manager' ) ) {
+        CG_License_Manager::unschedule_cron();
     }
 }
 register_deactivation_hook(__FILE__, 'certificate_generator_deactivate');
@@ -569,13 +519,24 @@ function certificate_generator_uninstall() {
 }
 register_uninstall_hook(__FILE__, 'certificate_generator_uninstall');
 
-// Plugin update logic
+// Plugin update logic + one-time v7 migration
 function certificate_generator_update_check() {
     $current_version = get_option('certificate_generator_version', '');
-    $new_version = '6.0.1';
+    $new_version = '7.0.0';
 
     if ($current_version !== $new_version) {
         update_option('certificate_generator_version', $new_version);
+    }
+
+    // v7 migration: copy legacy gema API URL → license server URL (runs once).
+    if ( ! get_option( 'cg_migration_v7_done' ) ) {
+        if ( ! get_option( 'cg_license_server_url' ) ) {
+            $legacy = get_option( 'cg_gema_api_url', '' );
+            if ( $legacy ) {
+                update_option( 'cg_license_server_url', rtrim( $legacy, '/' ) );
+            }
+        }
+        update_option( 'cg_migration_v7_done', true );
     }
 }
 add_action('plugins_loaded', 'certificate_generator_update_check');
@@ -697,45 +658,29 @@ function certificate_generator_get_memory_usage() {
     return 'Unknown';
 }
 
-// Helper function to get peak memory usage formatted
-function certificate_generator_get_peak_memory_usage() {
-    if (function_exists('memory_get_peak_usage')) {
-        return certificate_generator_format_bytes(memory_get_peak_usage(true));
-    }
-    return 'Unknown';
-}
-
-// Helper function to get debug session duration
-function certificate_generator_get_session_duration($formatted = false) {
-    $start_time = get_option('cert_gen_debug_start_time');
-    if (!$start_time) {
-        return $formatted ? 'Unknown' : 0;
-    }
-
-    $duration = time() - $start_time;
-
-    if (!$formatted) {
-        return $duration;
-    }
-
-    if ($duration < 60) {
-        return $duration . ' seconds';
-    } elseif ($duration < 3600) {
-        return round($duration / 60, 1) . ' minutes';
-    } else {
-        return round($duration / 3600, 2) . ' hours';
-    }
-}
-
-// Global debug logging function
+// Global debug logging — delegates to error_log when WP_DEBUG is on.
 function certificate_generator_log_debug($message) {
     if (defined('WP_DEBUG') && WP_DEBUG) {
-        error_log('[Certificate Generator Debug] ' . $message);
+        error_log('[Certificate Generator] ' . $message);
     }
 }
 
 // Add memory monitoring to admin pages
 add_action('admin_init', 'certificate_generator_check_memory_usage');
+
+// Redirect removed standalone pages to the main settings page.
+add_action('admin_init', function () {
+    if (!current_user_can('manage_options') || empty($_GET['page'])) return;
+    $page = $_GET['page'];
+    if ($page === 'cg-email-settings') {
+        wp_safe_redirect(admin_url('options-general.php?page=certificate_generator_settings&tab=templates'));
+        exit;
+    }
+    if ($page === 'cert-gen-debug-dashboard' || $page === 'cert-gen-recovery') {
+        wp_safe_redirect(admin_url('options-general.php?page=certificate_generator_settings'));
+        exit;
+    }
+});
 
 // ── Centralized page renderers ──
 

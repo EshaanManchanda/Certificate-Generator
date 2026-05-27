@@ -416,8 +416,8 @@ function certificate_generator_send_single_email_ajax() {
 
 	// Debug log the fields and post type
 	if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
-		error_log( "Certificate Generator Debug - Post type: {$post_type}, Fields: " . print_r( $fields, true ) );
-		error_log( "Certificate Generator Debug - Template ID: {$template_id}, Template URL: {$template_url}" );
+		cg_debug_log( "Post type: {$post_type}, Fields: " . print_r( $fields, true ) );
+		cg_debug_log( "Template ID: {$template_id}, Template URL: {$template_url}" );
 	}
 
 	// Check if the template has at least the minimum number of field positions configured
@@ -438,8 +438,8 @@ function certificate_generator_send_single_email_ajax() {
 
 		// Debug log to check what's happening
 		if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
-			error_log( "Certificate Generator Debug - Checking field position for field_{$i} (X): " . ( $position_x ? $position_x : 'empty' ) );
-			error_log( "Certificate Generator Debug - Checking field position for field_{$i} (Y): " . ( $position_y ? $position_y : 'empty' ) );
+			cg_debug_log( "Checking field position for field_{$i} (X): " . ( $position_x ? $position_x : 'empty' ) );
+			cg_debug_log( "Checking field position for field_{$i} (Y): " . ( $position_y ? $position_y : 'empty' ) );
 		}
 
 		if ( empty( $position_x ) || empty( $position_y ) ) {
@@ -469,7 +469,7 @@ function certificate_generator_send_single_email_ajax() {
 	// Send the email with the correct fields based on post type
 	// We need to explicitly pass the fields to ensure the certificate is generated correctly
 	if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
-		error_log( "Certificate Generator Debug - Sending email for post ID: {$post_id} with fields: " . print_r( $fields, true ) );
+		cg_debug_log( "Sending email for post ID: {$post_id} with fields: " . print_r( $fields, true ) );
 	}
 
 	// Check if certificate file already exists
@@ -478,7 +478,7 @@ function certificate_generator_send_single_email_ajax() {
 
 	if ( ! $certificate_exists ) {
 		if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
-			error_log( 'Certificate Generator Debug - Certificate file does not exist or path is empty. Generating new certificate.' );
+			cg_debug_log( 'Certificate file does not exist or path is empty. Generating new certificate.' );
 		}
 		// Try to generate the certificate first to ensure it exists
 		$certificate_result = generate_certificate_pdf_email( $post_id, $fields );
@@ -487,7 +487,7 @@ function certificate_generator_send_single_email_ajax() {
 			wp_die();
 		}
 	} elseif ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
-			error_log( "Certificate Generator Debug - Certificate file already exists at: {$certificate_path}" );
+			cg_debug_log( "Certificate file already exists at: {$certificate_path}" );
 	}
 
 	// Now send the email

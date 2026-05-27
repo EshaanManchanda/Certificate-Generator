@@ -194,6 +194,10 @@ function bulk_import_students() {
 							? ( \CertificateGenerator\Helpers\DateHelper::to_storage( $_issue_raw ) ?? $_issue_raw )
 							: $_issue_raw;
 
+						// send_email: optional CSV column. false/0/no → 0 (opt-out), anything else → 1 (default).
+						$_se_raw    = strtolower( trim( $student_data['send_email'] ?? '1' ) );
+						$send_email = in_array( $_se_raw, array( 'false', '0', 'no' ), true ) ? 0 : 1;
+
 						$insert_data = array(
 							'student_name'     => sanitize_text_field( $student_data['student_name'] ),
 							'email'            => sanitize_email( $student_data['email'] ),
@@ -203,6 +207,7 @@ function bulk_import_students() {
 							'certificate_type' => $cert_type,
 							'issue_date'       => $_issue_stored ?: null,
 							'status'           => 'active',
+							'send_email'       => $send_email,
 							'created_at'       => current_time( 'mysql' ),
 							'updated_at'       => current_time( 'mysql' ),
 						);
@@ -434,6 +439,10 @@ function bulk_import_teachers() {
 						$phone = sanitize_text_field( $teacher_data['phone_number'] );
 					}
 
+					// send_email: optional CSV column. false/0/no → 0 (opt-out), anything else → 1 (default).
+					$_se_raw_t    = strtolower( trim( $teacher_data['send_email'] ?? '1' ) );
+					$send_email_t = in_array( $_se_raw_t, array( 'false', '0', 'no' ), true ) ? 0 : 1;
+
 					$insert_data = array(
 						'teacher_name'     => sanitize_text_field( $teacher_data['teacher_name'] ),
 						'email'            => sanitize_email( $teacher_data['email'] ),
@@ -443,6 +452,7 @@ function bulk_import_teachers() {
 						'certificate_type' => $cert_type,
 						'issue_date'       => $_t_issue_stored ?: null,
 						'status'           => 'active',
+						'send_email'       => $send_email_t,
 						'created_at'       => current_time( 'mysql' ),
 						'updated_at'       => current_time( 'mysql' ),
 					);
@@ -623,12 +633,17 @@ function bulk_import_schools() {
 						}
 					}
 
+					// send_email: optional CSV column. false/0/no → 0 (opt-out), anything else → 1 (default).
+					$_se_raw_s    = strtolower( trim( $school_data['send_email'] ?? '1' ) );
+					$send_email_s = in_array( $_se_raw_s, array( 'false', '0', 'no' ), true ) ? 0 : 1;
+
 					$insert_data = array(
 						'school_name'      => $school_name,
 						'city'             => sanitize_text_field( $school_data['place'] ?? '' ),
 						'certificate_type' => $cert_type,
 						'issue_date'       => $_s_issue_stored ?: null,
 						'status'           => 'active',
+						'send_email'       => $send_email_s,
 						'created_at'       => current_time( 'mysql' ),
 						'updated_at'       => current_time( 'mysql' ),
 					);

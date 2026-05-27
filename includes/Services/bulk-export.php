@@ -62,7 +62,7 @@ function bulk_export_students() {
 				header( 'Expires: 0' );
 
 				$output  = fopen( 'php://output', 'w' );
-				$headers = array( 'student_name', 'email', 'phone', 'school_name', 'status' );
+				$headers = array( 'student_name', 'email', 'phone', 'school_name', 'status', 'send_email' );
 				$headers = array_merge( $headers, $extra_keys );
 				fputcsv( $output, $headers );
 
@@ -77,6 +77,7 @@ function bulk_export_students() {
 						$row['phone'],
 						$row['school_name'],
 						$row['status'],
+						isset( $row['send_email'] ) && ! $row['send_email'] ? 'false' : 'true',
 					);
 					foreach ( $extra_keys as $key ) {
 						$csv_row[] = $extra[ $key ] ?? '';
@@ -219,7 +220,7 @@ function bulk_export_schools() {
 				header( 'Expires: 0' );
 
 				$output  = fopen( 'php://output', 'w' );
-				$headers = array( 'school_name', 'city', 'status' );
+				$headers = array( 'school_name', 'city', 'status', 'send_email' );
 				$headers = array_merge( $headers, $extra_keys );
 				fputcsv( $output, $headers );
 
@@ -232,6 +233,7 @@ function bulk_export_schools() {
 						$row['school_name'],
 						$row['city'] ?? '',
 						$row['status'] ?? 'active',
+						isset( $row['send_email'] ) && ! $row['send_email'] ? 'false' : 'true',
 					);
 					foreach ( $extra_keys as $key ) {
 						$csv_row[] = $extra[ $key ] ?? '';
@@ -358,7 +360,7 @@ function bulk_export_teachers() {
 				header( 'Expires: 0' );
 
 				$output  = fopen( 'php://output', 'w' );
-				$headers = array( 'teacher_name', 'email', 'phone', 'school_name', 'certificate_type', 'issue_date', 'status' );
+				$headers = array( 'teacher_name', 'email', 'phone', 'school_name', 'certificate_type', 'issue_date', 'status', 'send_email' );
 				$headers = array_merge( $headers, $extra_keys );
 				fputcsv( $output, $headers );
 
@@ -375,6 +377,7 @@ function bulk_export_teachers() {
 						$row['certificate_type'],
 						$row['issue_date'] ?? '',
 						$row['status'] ?? 'active',
+						isset( $row['send_email'] ) && ! $row['send_email'] ? 'false' : 'true',
 					);
 					foreach ( $extra_keys as $key ) {
 						$csv_row[] = $extra[ $key ] ?? '';

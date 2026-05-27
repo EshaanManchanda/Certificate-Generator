@@ -643,7 +643,7 @@ function school_bulk_certificate_download_shortcode() {
 				} else {
 					// Log the query parameters for debugging
 					if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
-						error_log( "Certificate Generator Debug - No certificates generated for school: {$school_name}. Query parameters: " . print_r( $students_args, true ) );
+						cg_debug_log( "No certificates generated for school: {$school_name}. Query parameters: " . print_r( $students_args, true ) );
 					}
 
 					// Get all students from this school to check which ones are missing data
@@ -671,8 +671,8 @@ function school_bulk_certificate_download_shortcode() {
 
 					// Log the query for debugging
 					if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
-						error_log( "Certificate Generator Debug - All students query for school {$school_name}: " . print_r( $all_students_args, true ) );
-						error_log( "Certificate Generator Debug - Total students found: {$all_students->post_count}" );
+						cg_debug_log( "All students query for school {$school_name}: " . print_r( $all_students_args, true ) );
+						cg_debug_log( "Total students found: {$all_students->post_count}" );
 					}
 
 					while ( $all_students->have_posts() ) {
@@ -700,14 +700,14 @@ function school_bulk_certificate_download_shortcode() {
 							if ( $found_type ) {
 								$certificate_type = $found_type;
 								if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
-									error_log( "Certificate Generator Debug - Successfully found certificate type using helper function: '{$certificate_type}'" );
+									cg_debug_log( "Successfully found certificate type using helper function: '{$certificate_type}'" );
 								}
 							} else {
 								$student_issues[] = 'missing certificate type';
 								// Log all meta for this student to help diagnose the issue
 								if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
 									$all_meta = get_post_meta( $student_id );
-									error_log( "Certificate Generator Debug - All meta for student ID {$student_id}: " . print_r( $all_meta, true ) );
+									cg_debug_log( "All meta for student ID {$student_id}: " . print_r( $all_meta, true ) );
 								}
 
 								// Check if there are any certificate templates in the system

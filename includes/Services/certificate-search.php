@@ -290,7 +290,7 @@ function cg_template_url_to_path( string $url ): string {
  */
 function cg_debug_log( string $message ): void {
 	if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
-		error_log( 'Certificate Generator Debug - ' . $message );
+		cg_debug_log( '' . $message );
 	}
 }
 
@@ -733,15 +733,31 @@ function generate_certificate_pdf_with_data( $post_data ) {
 	}
 
 	// ── Template lookup ───────────────────────────────────────────────────────
-	// For the preview path use non-strict mode so the admin can still see a
-	// rendered certificate even when issue_date has no exact template match.
-	// For real generation (shortcodes) strict=true is the default.
+	// Preview path: load the specific template by ID so draft templates work
+	// and we never hit the status='published' filter or type-matching logic.
+	// Real generation: select by certificate_type + issue_date (strict mode).
 	$is_preview           = ! empty( $post_data['_preview_post_id'] );
-	$certificate_template = cg_select_certificate_template(
-		$post_data['certificate_type'],
-		$issue_date_iso,
-		! $is_preview   // strict=false for preview, strict=true for generation
-	);
+	$certificate_template = null;
+
+	if ( $is_preview && class_exists( '\CertificateGenerator\Database\CustomTables' ) ) {
+		$tpl_table = \CertificateGenerator\Database\CustomTables::instance()->get_table( 'certificate_templates' );
+		$row       = $GLOBALS['wpdb']->get_row(
+			$GLOBALS['wpdb']->prepare( "SELECT * FROM $tpl_table WHERE id = %d", (int) $post_data['_preview_post_id'] ),
+			ARRAY_A
+		);
+		if ( $row ) {
+			$certificate_template = (object) $row;
+		}
+	}
+
+	if ( ! $certificate_template ) {
+		$certificate_template = cg_select_certificate_template(
+			$post_data['certificate_type'],
+			$issue_date_iso,
+			! $is_preview   // strict=false for preview, strict=true for generation
+		);
+	}
+
 	if ( ! $certificate_template ) {
 		$msg = sprintf(
 			'No certificate template found for type "%s" with issue_date "%s". '
@@ -754,7 +770,7 @@ function generate_certificate_pdf_with_data( $post_data ) {
 	}
 	// One query for all template meta (replaces N individual get_post_meta calls)
 	// If template came from SQL table, it already has all data
-	if ( isset( $certificate_template->id ) && isset( $certificate_template->template_url ) ) {
+	if ( isset( $certificate_template->id ) && ! isset( $certificate_template->ID ) ) {
 		// SQL table result — data is already flat
 		$tmpl_meta = array();
 		foreach ( $certificate_template as $key => $value ) {
@@ -829,7 +845,7 @@ function generate_certificate_pdf_with_data( $post_data ) {
 
 	// Fetch field positions dynamically from the certificate template.
 	// Check if data is from SQL table (has id and template_url keys)
-	$is_sql_table    = isset( $certificate_template->id ) && isset( $certificate_template->template_url );
+	$is_sql_table    = isset( $certificate_template->id ) && ! isset( $certificate_template->ID );
 	$field_positions = array();
 	foreach ( $fields as $field_num => $field ) {
 		$field_key = $field_num + 1; // 1-indexed
@@ -1449,7 +1465,7 @@ function generate_certificate_pdf( $post_id, $fields, $student_data = null ) {
 	}
 
 	// Get template meta - handle both SQL table and CPT
-	if ( isset( $certificate_template->id ) && isset( $certificate_template->template_url ) ) {
+	if ( isset( $certificate_template->id ) && ! isset( $certificate_template->ID ) ) {
 		// SQL table result
 		$tmpl_meta = array();
 		foreach ( $certificate_template as $key => $value ) {
@@ -1519,7 +1535,7 @@ function generate_certificate_pdf( $post_id, $fields, $student_data = null ) {
 
 	$field_positions   = array();
 	$missing_positions = array();
-	$is_sql_table      = isset( $certificate_template->id ) && isset( $certificate_template->template_url );
+	$is_sql_table      = isset( $certificate_template->id ) && ! isset( $certificate_template->ID );
 
 	foreach ( $fields as $index => $field ) {
 		$field_key = $index + 1;
@@ -1931,9 +1947,9 @@ function generate_certificate_pdf( $post_id, $fields, $student_data = null ) {
 function generate_certificate_pdf_email( $post_id, $fields, $email_options = null ) {
 	// Debug log the input parameters
 	if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
-		error_log( "Certificate Generator Debug - Generating certificate PDF for email. Post ID: {$post_id}" );
-		error_log( 'Certificate Generator Debug - Fields: ' . print_r( $fields, true ) );
-		error_log( 'Certificate Generator Debug - Email options: ' . print_r( $email_options, true ) );
+		cg_debug_log( "Generating certificate PDF for email. Post ID: {$post_id}" );
+		cg_debug_log( 'Fields: ' . print_r( $fields, true ) );
+		cg_debug_log( 'Email options: ' . print_r( $email_options, true ) );
 	}
 
 	// Ensure we have valid fields based on post type if not provided
@@ -1982,12 +1998,12 @@ function generate_certificate_pdf_email( $post_id, $fields, $email_options = nul
 				break;
 			default:
 				if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
-					error_log( "Certificate Generator Debug - Invalid post type: {$post_type}" );
+					cg_debug_log( "Invalid post type: {$post_type}" );
 				}
 				return false;
 		}
 		if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
-			error_log( "Certificate Generator Debug - Using default fields for post type {$post_type}: " . print_r( $fields, true ) );
+			cg_debug_log( "Using default fields for post type {$post_type}: " . print_r( $fields, true ) );
 		}
 	}
 
@@ -2033,8 +2049,8 @@ function generate_certificate_pdf_email( $post_id, $fields, $email_options = nul
 	// Verify the file exists
 	if ( empty( $certificate_path ) || ! file_exists( $certificate_path ) ) {
 		if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
-			error_log( "Certificate Generator Debug - Certificate file not found at path: {$certificate_path}" );
-			error_log( "Certificate Generator Debug - Attempting to regenerate certificate for post ID: {$post_id}" );
+			cg_debug_log( "Certificate file not found at path: {$certificate_path}" );
+			cg_debug_log( "Attempting to regenerate certificate for post ID: {$post_id}" );
 		}
 		// Try to regenerate if file doesn't exist
 		// Removed $email_options
@@ -2065,7 +2081,7 @@ function generate_certificate_pdf_email( $post_id, $fields, $email_options = nul
 			$certificate_path = wp_normalize_path( $certificate_path );
 			if ( file_exists( $certificate_path ) ) {
 				if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
-					error_log( "Certificate Generator Debug - Certificate regenerated successfully at: {$certificate_path}" );
+					cg_debug_log( "Certificate regenerated successfully at: {$certificate_path}" );
 				}
 			} else {
 				error_log( "Certificate Generator: Certificate regeneration failed for post ID: {$post_id}" );
@@ -2077,7 +2093,7 @@ function generate_certificate_pdf_email( $post_id, $fields, $email_options = nul
 	}
 
 	if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
-		error_log( "Certificate Generator Debug - Certificate generated successfully. Path: {$certificate_path}, URL: {$certificate_url}" );
+		cg_debug_log( "Certificate generated successfully. Path: {$certificate_path}, URL: {$certificate_url}" );
 	}
 
 	// Return both the file path and URL

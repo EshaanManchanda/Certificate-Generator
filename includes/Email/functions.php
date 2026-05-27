@@ -620,7 +620,7 @@ function certificate_generator_send_email( $cg_id, $log_email = true ) {
 		'server'             => parse_url( home_url(), PHP_URL_HOST ),
 	);
 	if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
-		error_log( 'Certificate Generator Debug - Email configuration: ' . print_r( $email_config, true ) );
+		cg_debug_log( 'Email configuration: ' . print_r( $email_config, true ) );
 	}
 
 	for ( $attempt = 1; $attempt <= $max_retries; $attempt++ ) {
@@ -1063,8 +1063,8 @@ function certificate_generator_log_wp_mail_error( $error ) {
 
 		// Log to WordPress error log (only in debug mode for detailed info)
 		if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
-			error_log( 'Certificate Generator Debug - wp_mail_failed hook triggered' );
-			error_log( 'Certificate Generator Debug - WP_Error details: ' . print_r( $error_data, true ) );
+			cg_debug_log( 'wp_mail_failed hook triggered' );
+			cg_debug_log( 'WP_Error details: ' . print_r( $error_data, true ) );
 		}
 
 		// Also log to debug.log if WP_DEBUG_LOG is enabled

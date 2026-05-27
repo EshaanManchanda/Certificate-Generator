@@ -506,16 +506,73 @@ register_deactivation_hook(__FILE__, 'certificate_generator_deactivate');
 function certificate_generator_uninstall() {
     global $wpdb;
 
-    // Drop all custom database tables
-    $tables = [
+    // Legacy tables
+    $legacy_tables = [
         $wpdb->prefix . 'certificate_generator',
         $wpdb->prefix . 'cert_email_logs',
-        $wpdb->prefix . 'cert_email_queue'
+        $wpdb->prefix . 'cert_email_queue',
     ];
 
-    foreach ($tables as $table_name) {
-        $wpdb->query($wpdb->prepare("DROP TABLE IF EXISTS %i", $table_name));
+    // New cg_* custom tables (CustomTables::get_all_tables())
+    $cg_prefix  = $wpdb->prefix . 'cg_';
+    $cg_tables  = [
+        $cg_prefix . 'students',
+        $cg_prefix . 'teachers',
+        $cg_prefix . 'schools',
+        $cg_prefix . 'certificate_templates',
+        $cg_prefix . 'certificates',
+        $cg_prefix . 'email_logs',
+        $cg_prefix . 'email_queue',
+        $cg_prefix . 'student_certificates',
+        $cg_prefix . 'teacher_certificates',
+        $cg_prefix . 'settings',
+        $cg_prefix . 'migrations',
+    ];
+
+    foreach ( array_merge( $legacy_tables, $cg_tables ) as $table ) {
+        $wpdb->query( $wpdb->prepare( 'DROP TABLE IF EXISTS %i', $table ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
     }
+
+    // Clean up all plugin options
+    $options = [
+        'certificate_generator_version',
+        'certificate_generator_activated_at',
+        'certificate_generator_activation_error',
+        'certificate_generator_compatibility',
+        'certificate_generator_missing_files',
+        'certificate_generator_rate_limits',
+        'certificate_generator_settings_email',
+        'cg_custom_tables_version',
+        'cg_db_version',
+        'cg_license_key',
+        'cg_license_status',
+        'cg_license_server_url',
+        'cg_gema_api_key',
+        'cg_migration_v7_done',
+        'cg_welcome_dismissed',
+        'cg_email_transport',
+        'cg_email_from_name',
+        'cg_email_from_email',
+        'cg_email_subject',
+        'cg_email_body',
+        'cg_smtp_host',
+        'cg_smtp_port',
+        'cg_smtp_username',
+        'cg_smtp_password',
+        'cg_smtp_encryption',
+        'cg_serial_prefix',
+        'cg_serial_length',
+        'cg_serial_suffix',
+        'cg_serial_reset_period',
+        'cg_serial_include_date',
+    ];
+    foreach ( $options as $opt ) {
+        delete_option( $opt );
+    }
+
+    // Remove scheduled cron events
+    wp_clear_scheduled_hook( 'certificate_generator_process_email_queue' );
+    wp_clear_scheduled_hook( 'cg_bulk_generate_serials' );
 }
 register_uninstall_hook(__FILE__, 'certificate_generator_uninstall');
 

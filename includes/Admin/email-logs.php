@@ -338,37 +338,7 @@ function certificate_generator_delete_email_logs( $log_ids ) {
 	);
 }
 
-// Handle single email resend via AJAX
-add_action( 'wp_ajax_certificate_generator_send_single_email', 'certificate_generator_handle_single_email_resend' );
-function certificate_generator_handle_single_email_resend() {
-	// Verify nonce
-	if ( ! wp_verify_nonce( $_POST['nonce'], 'certificate_generator_send_email' ) ) {
-		wp_die( 'Security check failed' );
-	}
-
-	// Check permissions
-	if ( ! current_user_can( 'edit_posts' ) ) {
-		wp_die( 'Insufficient permissions' );
-	}
-
-	$post_id = intval( $_POST['post_id'] );
-
-	if ( ! $post_id ) {
-		wp_send_json_error( array( 'message' => 'Invalid post ID' ) );
-	}
-
-	// Include email functions if not already loaded
-	if ( ! function_exists( 'certificate_generator_send_email' ) ) {
-		require_once plugin_dir_path( __FILE__ ) . '../Email/functions.php';
-	}
-
-	// Send the email
-	$result = certificate_generator_send_email( $post_id, true );
-
-	if ( $result ) {
-		wp_send_json_success( array( 'message' => 'Email sent successfully' ) );
-	} else {
-		wp_send_json_error( array( 'message' => 'Failed to send email' ) );
-	}
-}
+// Note: wp_ajax_certificate_generator_send_single_email is handled by
+// certificate_generator_send_single_email_ajax() in includes/Admin/columns.php
+// (SQL-first lookup, modern implementation). Duplicate removed.
 ?>

@@ -774,19 +774,19 @@ endif;
 								<div class="cg-field-row-inputs">
 									<div class="cg-field-input-wrap">
 										<span>X</span>
-										<input type="number" id="field_<?php echo $i; ?>_position_x" name="field_<?php echo $i; ?>_position_x"
+										<input type="number" id="field_<?php echo $i; ?>_position_x" step="0.01" name="field_<?php echo $i; ?>_position_x"
 											value="<?php echo esc_attr( $px ); ?>" min="0" max="<?php echo $orientation_val === 'landscape' ? 297 : 210; ?>">
 										<span style="color:#aaa">mm</span>
 									</div>
 									<div class="cg-field-input-wrap">
 										<span>Y</span>
-										<input type="number" id="field_<?php echo $i; ?>_position_y" name="field_<?php echo $i; ?>_position_y"
+										<input type="number" id="field_<?php echo $i; ?>_position_y" step="0.01" name="field_<?php echo $i; ?>_position_y"
 											value="<?php echo esc_attr( $py ); ?>" min="0" max="<?php echo $orientation_val === 'landscape' ? 210 : 297; ?>">
 										<span style="color:#aaa">mm</span>
 									</div>
 								</div>
 								<div class="cg-field-row-footer">
-									<label>W <input type="number" id="field_<?php echo $i; ?>_width" name="field_<?php echo $i; ?>_width" value="<?php echo esc_attr( $pw ); ?>" min="1" max="297"> mm</label>
+									<label>W <input type="number" id="field_<?php echo $i; ?>_width" step="0.01" name="field_<?php echo $i; ?>_width" value="<?php echo esc_attr( $pw ); ?>" min="1" max="297"> mm</label>
 									<label><?php esc_html_e( 'Align', 'certificate-generator' ); ?>
 										<select id="field_<?php echo $i; ?>_alignment" name="field_<?php echo $i; ?>_alignment">
 											<option value="L" <?php selected( $pa, 'L' ); ?>>L</option>

@@ -255,7 +255,7 @@ function certificate_generator_update_rate_limit_config( $config ) {
 	$result = update_option( 'certificate_generator_rate_limits', $updated );
 
 	if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
-		error_log( 'Certificate Generator Debug - Rate limit config updated: ' . print_r( $updated, true ) );
+		cg_debug_log( 'Rate limit config updated: ' . print_r( $updated, true ) );
 	}
 
 	return $result;

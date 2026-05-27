@@ -9,12 +9,13 @@ namespace CertificateGenerator\Database\Migrations;
 class MigrationRunner {
 
 	private string $option_key      = 'cg_db_version';
-	private string $current_version = '001';
+	private string $current_version = '002';
 	private array $migrations       = array();
 
 	public function __construct() {
 		$this->migrations = array(
 			'001' => new Migration001_AddTimeColumns(),
+			'002' => new Migration002_AddSendEmailColumn(),
 		);
 	}
 

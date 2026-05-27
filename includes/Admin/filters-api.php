@@ -252,7 +252,8 @@ function certificate_generator_get_filtered_recipients( $filters = array() ) {
 				continue;
 			}
 
-			$where = array( '1=1' );
+			// send_email = 1: included in bulk sends. send_email = 0: opt-out (admin individual send bypasses this).
+			$where = array( '1=1', 't.send_email = 1' );
 
 			if ( ! empty( $filters['schools'] ) ) {
 				$ph      = implode( ',', array_fill( 0, count( $filters['schools'] ), '%s' ) );
@@ -422,7 +423,8 @@ function certificate_generator_count_filtered_recipients( $filters = array() ) {
 				continue;
 			}
 
-			$where = array( '1=1' );
+			// send_email = 1: included in bulk sends. send_email = 0: opt-out (admin individual send bypasses this).
+			$where = array( '1=1', 't.send_email = 1' );
 
 			if ( ! empty( $filters['schools'] ) ) {
 				$ph      = implode( ',', array_fill( 0, count( $filters['schools'] ), '%s' ) );

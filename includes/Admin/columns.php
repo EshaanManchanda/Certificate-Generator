@@ -51,6 +51,7 @@ function add_custom_columns( $columns ) {
 			$new_columns['certificate_type'] = __( 'Certificate Type', 'certificate-generator' );
 			$new_columns['issue_date']       = __( 'Issue Date', 'certificate-generator' );
 			$new_columns['send_email']       = __( 'Send Email', 'certificate-generator' );
+			$new_columns['bulk_send_opt_in'] = __( 'Bulk Send', 'certificate-generator' );
 
 			// Add up to 2 extra field columns for the current list view
 			if ( class_exists( 'CG_Field_Schema' ) ) {
@@ -202,6 +203,29 @@ function populate_custom_columns( $column, $post_id ) {
 				echo '<span class="dashicons dashicons-no-alt" style="color: #d63638;" title="' . esc_attr__( 'No email address available', 'certificate-generator' ) . '"></span>';
 			}
 			break;
+		case 'bulk_send_opt_in':
+			// Toggle for the send_email DB flag (1 = included in bulk sends, 0 = opt-out).
+			// SQL rows only — CPT-only installs show '—'.
+			if ( $sql_row === null ) {
+				echo '—';
+				break;
+			}
+			$opt_in  = isset( $sql_row['send_email'] ) ? (int) $sql_row['send_email'] : 1;
+			$enabled = $opt_in !== 0;
+			$label   = $enabled ? __( 'Included', 'certificate-generator' ) : __( 'Excluded', 'certificate-generator' );
+			$color   = $enabled ? '#46b450' : '#d63638';
+			$title   = $enabled
+				? __( 'Recipient will receive bulk emails. Click to exclude.', 'certificate-generator' )
+				: __( 'Recipient is excluded from bulk emails. Click to include.', 'certificate-generator' );
+			echo '<button type="button"
+				class="button cg-bulk-send-toggle"
+				data-post-id="' . esc_attr( $post_id ) . '"
+				data-post-type="' . esc_attr( $post_type ) . '"
+				data-current="' . esc_attr( $opt_in ) . '"
+				title="' . esc_attr( $title ) . '"
+				style="border-color:' . esc_attr( $color ) . ';color:' . esc_attr( $color ) . ';min-width:80px;">'
+				. esc_html( $label ) . '</button>';
+			break;
 		default:
 			// Handle dynamic extra field columns (cg_extra_{slug})
 			// After helper flattens extra_fields JSON, slug is a top-level key in $sql_row
@@ -291,6 +315,53 @@ function custom_search_query( $query ) {
 	}
 
 	$query->set( 'meta_query', $meta_query );
+}
+
+// ── AJAX: toggle send_email (bulk-send opt-in/opt-out) per entity row ────────
+add_action( 'wp_ajax_cg_toggle_bulk_send', 'cg_ajax_toggle_bulk_send' );
+function cg_ajax_toggle_bulk_send(): void {
+	check_ajax_referer( 'cg_toggle_bulk_send', 'nonce' );
+
+	if ( ! current_user_can( 'edit_posts' ) ) {
+		wp_send_json_error( array( 'message' => __( 'Insufficient permissions.', 'certificate-generator' ) ) );
+	}
+
+	$post_id   = absint( $_POST['post_id'] ?? 0 );
+	$post_type = sanitize_key( $_POST['post_type'] ?? '' );
+	$new_val   = absint( $_POST['new_value'] ?? 1 ); // 0 or 1
+
+	if ( ! $post_id || ! in_array( $post_type, array( 'students', 'teachers', 'schools' ), true ) ) {
+		wp_send_json_error( array( 'message' => __( 'Invalid request.', 'certificate-generator' ) ) );
+	}
+
+	if ( ! class_exists( '\CertificateGenerator\Database\CustomTables' ) ) {
+		wp_send_json_error( array( 'message' => __( 'Custom tables not available.', 'certificate-generator' ) ) );
+	}
+
+	global $wpdb;
+	$table = \CertificateGenerator\Database\CustomTables::instance()->get_table( $post_type );
+	if ( empty( $table ) ) {
+		wp_send_json_error( array( 'message' => __( 'Table not found.', 'certificate-generator' ) ) );
+	}
+
+	$updated = $wpdb->update( // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+		$table,
+		array( 'send_email' => $new_val ? 1 : 0 ),
+		array( 'wp_post_id' => $post_id ),
+		array( '%d' ),
+		array( '%d' )
+	);
+
+	if ( $updated === false ) {
+		wp_send_json_error( array( 'message' => __( 'Database update failed.', 'certificate-generator' ) ) );
+	}
+
+	wp_send_json_success(
+		array(
+			'new_value' => $new_val ? 1 : 0,
+			'label'     => $new_val ? __( 'Included', 'certificate-generator' ) : __( 'Excluded', 'certificate-generator' ),
+		)
+	);
 }
 
 // Add AJAX handler for sending emails
@@ -569,6 +640,50 @@ function certificate_generator_admin_footer_js() {
 	?>
 	<script type="text/javascript">
 	jQuery(document).ready(function($) {
+		// Bulk-send opt-in/opt-out toggle
+		$(document).on('click', '.cg-bulk-send-toggle', function() {
+			var btn      = $(this);
+			var postId   = btn.data('post-id');
+			var postType = btn.data('post-type');
+			var current  = parseInt(btn.data('current'), 10);
+			var newVal   = current === 1 ? 0 : 1;
+
+			btn.prop('disabled', true);
+
+			$.ajax({
+				url: ajaxurl,
+				type: 'POST',
+				dataType: 'json',
+				data: {
+					action:    'cg_toggle_bulk_send',
+					post_id:   postId,
+					post_type: postType,
+					new_value: newVal,
+					nonce:     '<?php echo wp_create_nonce( 'cg_toggle_bulk_send' ); ?>'
+				},
+				success: function(response) {
+					if (response.success) {
+						var d       = response.data;
+						var color   = d.new_value ? '#46b450' : '#d63638';
+						var title   = d.new_value
+							? '<?php echo esc_js( __( 'Recipient will receive bulk emails. Click to exclude.', 'certificate-generator' ) ); ?>'
+							: '<?php echo esc_js( __( 'Recipient is excluded from bulk emails. Click to include.', 'certificate-generator' ) ); ?>';
+						btn.data('current', d.new_value)
+							.attr('title', title)
+							.css({'border-color': color, 'color': color})
+							.text(d.label);
+					} else {
+						alert(response.data.message);
+					}
+					btn.prop('disabled', false);
+				},
+				error: function() {
+					alert('<?php echo esc_js( __( 'Request failed. Please try again.', 'certificate-generator' ) ); ?>');
+					btn.prop('disabled', false);
+				}
+			});
+		});
+
 		// Individual email sending functionality
 		$('.send-certificate-email').on('click', function() {
 			var button = $(this);

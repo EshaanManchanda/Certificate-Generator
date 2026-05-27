@@ -290,7 +290,7 @@ function cg_template_url_to_path( string $url ): string {
  */
 function cg_debug_log( string $message ): void {
 	if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
-		cg_debug_log( '' . $message );
+		error_log( 'Certificate Generator Debug - ' . $message );
 	}
 }
 

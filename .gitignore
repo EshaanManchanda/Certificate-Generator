@@ -20,7 +20,6 @@ Thumbs.db
 _dev/
 .playwright/
 CLAUDE.md
-docs/
 
 # Backup files
 *.bak

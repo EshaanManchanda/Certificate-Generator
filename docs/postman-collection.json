@@ -1,0 +1,269 @@
+{
+  "info": {
+    "name": "GEMA - Subscription & License API",
+    "description": "Endpoints for subscription, payments, and license verification",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:5000",
+      "type": "string"
+    },
+    {
+      "key": "wp_url",
+      "value": "https://your-wordpress-site.com",
+      "type": "string"
+    },
+    {
+      "key": "auth_token",
+      "value": "Bearer YOUR_JWT_TOKEN",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Backend - Payments",
+      "item": [
+        {
+          "name": "Get Subscription Plans",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/payments/plans",
+            "description": "Get available subscription plans (public)"
+          }
+        },
+        {
+          "name": "Create Payment Link",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/payments/create-link",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "{{auth_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"plan\": \"pro\"\n}"
+            },
+            "description": "Create Razorpay payment link (requires auth)"
+          }
+        },
+        {
+          "name": "Get Current Subscription",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/payments/subscription",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "{{auth_token}}"
+              }
+            ],
+            "description": "Get user's current subscription (requires auth)"
+          }
+        },
+        {
+          "name": "Verify License Key",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/payments/verify-license",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"license_key\": \"YOUR_LICENSE_KEY\"\n}"
+            },
+            "description": "Verify a license key (public)"
+          }
+        },
+        {
+          "name": "Payment Webhook",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/payments/webhook",
+            "header": [
+              {
+                "key": "X-Razorpay-Signature",
+                "value": "razorpay_webhook_signature"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"event\": \"payment.captured\",\n  \"payload\": {\n    \"payment\": {\n      \"entity\": {\n        \"id\": \"pay_123\",\n        \"amount\": 49900,\n        \"status\": \"captured\"\n      }\n    }\n  }\n}"
+            },
+            "description": "Razorpay webhook handler (public)"
+          }
+        }
+      ]
+    },
+    {
+      "name": "WordPress - cg/v1",
+      "item": [
+        {
+          "name": "Get Plans",
+          "request": {
+            "method": "GET",
+            "url": "{{wp_url}}/wp-json/cg/v1/payment/plans",
+            "description": "Get subscription plans from WordPress (public)"
+          }
+        },
+        {
+          "name": "Create Payment Link",
+          "request": {
+            "method": "POST",
+            "url": "{{wp_url}}/wp-json/cg/v1/payment/create-link",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"plan\": \"pro\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Create payment link (requires login)"
+          }
+        },
+        {
+          "name": "Get Subscription",
+          "request": {
+            "method": "GET",
+            "url": "{{wp_url}}/wp-json/cg/v1/payment/subscription",
+            "description": "Get current subscription (requires login)"
+          }
+        },
+        {
+          "name": "Get Payment History",
+          "request": {
+            "method": "GET",
+            "url": "{{wp_url}}/wp-json/cg/v1/payment/history",
+            "description": "Get payment history (requires login)"
+          }
+        },
+        {
+          "name": "Verify License",
+          "request": {
+            "method": "POST",
+            "url": "{{wp_url}}/wp-json/cg/v1/verify-license",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"license_key\": \"YOUR_LICENSE_KEY\"\n}"
+            },
+            "description": "Verify license key (public)"
+          }
+        },
+        {
+          "name": "Activate License",
+          "request": {
+            "method": "POST",
+            "url": "{{wp_url}}/wp-json/cg/v1/activate-license",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"license_key\": \"YOUR_LICENSE_KEY\",\n  \"plan\": \"pro\",\n  \"expiry\": \"2026-12-31\",\n  \"user_email\": \"user@example.com\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Activate a license key (public)"
+          }
+        }
+      ]
+    },
+    {
+      "name": "WordPress - certificate-generator/v1",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "url": "{{wp_url}}/wp-json/certificate-generator/v1/health",
+            "description": "Check API health (public)"
+          }
+        },
+        {
+          "name": "Validate API Key",
+          "request": {
+            "method": "POST",
+            "url": "{{wp_url}}/wp-json/certificate-generator/v1/validate-key",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"api_key\": \"YOUR_API_KEY\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Validate API key (requires api_key)"
+          }
+        },
+        {
+          "name": "Verify Serial",
+          "request": {
+            "method": "GET",
+            "url": "{{wp_url}}/wp-json/certificate-generator/v1/verify/{serial_number}",
+            "description": "Verify certificate serial number (public)"
+          }
+        },
+        {
+          "name": "Get Certificates by Email",
+          "request": {
+            "method": "GET",
+            "url": "{{wp_url}}/wp-json/certificate-generator/v1/certificates-by-email?email=test@example.com",
+            "description": "Get certificates for an email (requires api_key)"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Backend - Resumes",
+      "item": [
+        {
+          "name": "Get Templates",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/resumes/templates",
+            "description": "Get available resume templates (public)"
+          }
+        }
+      ]
+    }
+  ]
+}

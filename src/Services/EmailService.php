@@ -81,4 +81,31 @@ class EmailService {
 			$template
 		);
 	}
+
+	// ── Static facade ── all new call-sites use these instead of calling procedural functions directly.
+
+	public static function sendById( int $cg_id ): bool {
+		if ( ! function_exists( 'certificate_generator_send_email' ) ) {
+			return false;
+		}
+		return (bool) certificate_generator_send_email( $cg_id, false );
+	}
+
+	public static function queueById( int $cg_id, string $email, array $opts = array() ): int|false {
+		if ( ! function_exists( 'certificate_generator_queue_email' ) ) {
+			return false;
+		}
+		return certificate_generator_queue_email( $cg_id, $email, $opts );
+	}
+
+	public static function resendById( int $cg_id ): bool {
+		return self::sendById( $cg_id );
+	}
+
+	public static function bulkQueue( string $post_type, array $ids = array() ): array {
+		if ( ! function_exists( 'certificate_generator_bulk_queue_emails' ) ) {
+			return array( 'queued' => 0, 'skipped' => 0, 'errors' => array() );
+		}
+		return certificate_generator_bulk_queue_emails( $post_type, $ids );
+	}
 }

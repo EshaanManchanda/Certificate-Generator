@@ -22,6 +22,10 @@ if (!defined('ABSPATH')) {
 // Define constants for plugin paths
 define('CERTIFICATE_GENERATOR_PATH', plugin_dir_path(__FILE__));
 define('CERTIFICATE_GENERATOR_URL', plugin_dir_url(__FILE__));
+define('CG_QUEUE_BATCH_SIZE', 50);
+define('CG_QUEUE_STALE_MINUTES', 10);
+define('CG_QUEUE_MAX_ATTEMPTS', 3);
+define('CG_QUEUE_RUNTIME_BUDGET', 20);
 
 // Plugins page action links: Settings | Docs | Get Pro
 add_filter('plugin_action_links_' . plugin_basename(__FILE__), function(array $links): array {
@@ -121,6 +125,9 @@ $optional_files = [
     'includes/Admin/integration-dashboard.php' => 'Integration health dashboard widget',
     'includes/Public/student-template.php' => 'Student public profile template',
     'includes/Database/migrator.php' => 'Database migrator',
+    'includes/Database/migration-scheduled-status.php' => 'Scheduled status migration',
+    'includes/Database/migration-send-email-column.php' => 'Send email column migration',
+    'includes/Database/migration-queue-columns.php' => 'Queue last_attempt_at + indexes migration',
     'includes/Services/serial-generator.php' => 'Serial number generator',
     'includes/Services/qr-generator.php' => 'QR code generator',
     'includes/Admin/cg-settings.php' => 'Admin settings',
@@ -285,7 +292,7 @@ if (class_exists('\CertificateGenerator\Database\CustomTables')) {
         // ── Bulk Operations ──
         add_submenu_page('cg-dashboard', 'Bulk Import', 'Bulk Import', 'manage_options', 'cg-bulk-import', 'cg_render_bulk_import_page');
         add_submenu_page('cg-dashboard', 'Bulk Export', 'Bulk Export', 'manage_options', 'cg-bulk-export', 'cg_render_bulk_export_page');
-        add_submenu_page('cg-dashboard', 'Bulk Serial Numbers', 'Bulk Serials', 'manage_options', 'cg-bulk-serials', 'cg_render_bulk_serials_page');
+        // cg-bulk-serials registered by CG_Bulk_Serial_Generator::add_bulk_serial_menu() in bulk-serial.php — not duplicated here.
 
         // ── Email ──
         add_submenu_page('cg-dashboard', 'Bulk Send Certificates', 'Bulk Send', 'manage_options', 'certificate-bulk-send', 'cg_render_bulk_send_page');
@@ -333,12 +340,7 @@ if (class_exists('\CertificateGenerator\Database\CustomTables')) {
         }
     }, 20);
 
-    add_action('save_post_certificates', function($post_id) {
-        if (defined('DOING_AUTOSAVE') && DOING_AUTOSAVE) return;
-        if (class_exists('\CertificateGenerator\Database\DataMigration')) {
-            (new \CertificateGenerator\Database\DataMigration())->sync_template($post_id);
-        }
-    }, 20);
+
 }
 
 // Plugin activation hook
@@ -504,18 +506,23 @@ register_deactivation_hook(__FILE__, 'certificate_generator_deactivate');
 
 // Plugin uninstall hook
 function certificate_generator_uninstall() {
+    // If the user chose to keep data, stop here — all tables and options are preserved.
+    if ( get_option( 'cg_keep_data_on_uninstall', '1' ) === '1' ) {
+        return;
+    }
+
     global $wpdb;
 
-    // Legacy tables
+    // Drop legacy tables.
     $legacy_tables = [
         $wpdb->prefix . 'certificate_generator',
         $wpdb->prefix . 'cert_email_logs',
         $wpdb->prefix . 'cert_email_queue',
     ];
 
-    // New cg_* custom tables (CustomTables::get_all_tables())
-    $cg_prefix  = $wpdb->prefix . 'cg_';
-    $cg_tables  = [
+    // Drop new cg_* custom tables.
+    $cg_prefix = $wpdb->prefix . 'cg_';
+    $cg_tables = [
         $cg_prefix . 'students',
         $cg_prefix . 'teachers',
         $cg_prefix . 'schools',
@@ -530,10 +537,10 @@ function certificate_generator_uninstall() {
     ];
 
     foreach ( array_merge( $legacy_tables, $cg_tables ) as $table ) {
-        $wpdb->query( $wpdb->prepare( 'DROP TABLE IF EXISTS %i', $table ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+        $wpdb->query( "DROP TABLE IF EXISTS `$table`" ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
     }
 
-    // Clean up all plugin options
+    // Delete all plugin options.
     $options = [
         'certificate_generator_version',
         'certificate_generator_activated_at',
@@ -549,6 +556,8 @@ function certificate_generator_uninstall() {
         'cg_license_server_url',
         'cg_gema_api_key',
         'cg_migration_v7_done',
+        'cg_migration_scheduled_status_done',
+        'cg_keep_data_on_uninstall',
         'cg_welcome_dismissed',
         'cg_email_transport',
         'cg_email_from_name',
@@ -570,11 +579,100 @@ function certificate_generator_uninstall() {
         delete_option( $opt );
     }
 
-    // Remove scheduled cron events
+    // Remove scheduled cron events.
     wp_clear_scheduled_hook( 'certificate_generator_process_email_queue' );
     wp_clear_scheduled_hook( 'cg_bulk_generate_serials' );
+    wp_clear_scheduled_hook( 'cg_publish_scheduled_templates' );
+    wp_clear_scheduled_hook( 'cg_cleanup_qr_codes' );
+    wp_clear_scheduled_hook( 'cg_check_expiring_certificates' );
+    wp_clear_scheduled_hook( 'cg_cleanup_old_certificates' );
 }
 register_uninstall_hook(__FILE__, 'certificate_generator_uninstall');
+
+// ── Plugins-page modal: ask "Keep data?" before deletion ─────────────────────
+add_action( 'admin_footer-plugins.php', function () {
+    if ( ! current_user_can( 'manage_options' ) ) {
+        return;
+    }
+    $plugin_file = plugin_basename( __FILE__ );
+    $nonce       = wp_create_nonce( 'cg_set_keep_data' );
+    ?>
+    <style>
+    #cg-uninstall-modal-backdrop {
+        display:none; position:fixed; inset:0; background:rgba(0,0,0,.6); z-index:100000;
+    }
+    #cg-uninstall-modal {
+        position:fixed; top:50%; left:50%; transform:translate(-50%,-50%);
+        background:#fff; border-radius:8px; padding:32px 36px; max-width:420px; width:90%;
+        box-shadow:0 8px 40px rgba(0,0,0,.2); z-index:100001; text-align:center;
+    }
+    #cg-uninstall-modal h2 { margin:0 0 12px; font-size:20px; color:#1d2327; }
+    #cg-uninstall-modal p  { color:#50575e; margin:0 0 24px; line-height:1.6; }
+    #cg-uninstall-modal .cg-modal-btns { display:flex; gap:12px; justify-content:center; flex-wrap:wrap; }
+    #cg-uninstall-modal .cg-modal-btns button { padding:10px 22px; border-radius:6px; font-size:14px; font-weight:600; cursor:pointer; border:none; }
+    #cg-btn-keep   { background:#2271b1; color:#fff; }
+    #cg-btn-delete { background:#d63638; color:#fff; }
+    #cg-btn-cancel { background:#f0f0f1; color:#2c3338; }
+    </style>
+
+    <div id="cg-uninstall-modal-backdrop">
+        <div id="cg-uninstall-modal">
+            <h2><?php esc_html_e( 'Uninstalling Certificate Generator', 'certificate-generator' ); ?></h2>
+            <p><?php esc_html_e( 'Do you want to keep your certificate data (students, templates, email logs)?', 'certificate-generator' ); ?><br>
+            <small><?php esc_html_e( 'If you keep the data and reinstall the plugin, everything will still be there.', 'certificate-generator' ); ?></small></p>
+            <div class="cg-modal-btns">
+                <button id="cg-btn-keep"><?php esc_html_e( 'Yes, Keep Data', 'certificate-generator' ); ?></button>
+                <button id="cg-btn-delete"><?php esc_html_e( 'No, Delete Everything', 'certificate-generator' ); ?></button>
+                <button id="cg-btn-cancel"><?php esc_html_e( 'Cancel', 'certificate-generator' ); ?></button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    (function($) {
+        var pluginFile = <?php echo wp_json_encode( $plugin_file ); ?>;
+        var nonce      = <?php echo wp_json_encode( $nonce ); ?>;
+        var deleteHref = null;
+        var backdrop   = $('#cg-uninstall-modal-backdrop');
+
+        // Find and intercept the Delete link for this plugin.
+        $('tr[data-plugin="' + pluginFile + '"] .delete a, ' +
+          'tr[data-slug="certificate-generator-v7"] .delete a').on('click', function(e) {
+            e.preventDefault();
+            deleteHref = this.href;
+            backdrop.fadeIn(150);
+        });
+
+        function proceed(keepData) {
+            $.post(ajaxurl, {
+                action : 'cg_set_keep_data',
+                keep   : keepData ? '1' : '0',
+                nonce  : nonce
+            }).always(function() {
+                window.location.href = deleteHref;
+            });
+        }
+
+        $('#cg-btn-keep').on('click',   function() { proceed(true);  });
+        $('#cg-btn-delete').on('click', function() { proceed(false); });
+        $('#cg-btn-cancel, #cg-uninstall-modal-backdrop').on('click', function(e) {
+            if (e.target === this) { backdrop.fadeOut(150); deleteHref = null; }
+        });
+    })(jQuery);
+    </script>
+    <?php
+} );
+
+// AJAX: store the keep-data preference before WP proceeds with deletion.
+add_action( 'wp_ajax_cg_set_keep_data', function () {
+    check_ajax_referer( 'cg_set_keep_data', 'nonce' );
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_die( 'Forbidden', 403 );
+    }
+    $keep = ( sanitize_text_field( $_POST['keep'] ?? '1' ) === '0' ) ? '0' : '1';
+    update_option( 'cg_keep_data_on_uninstall', $keep );
+    wp_send_json_success();
+} );
 
 // Plugin update logic + one-time v7 migration
 function certificate_generator_update_check() {

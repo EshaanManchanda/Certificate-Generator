@@ -98,7 +98,9 @@ function handle_individual_certificate_download() {
 		}
 
 		if ( file_exists( $file_path ) ) {
-			$filename = sanitize_file_name( $student_name . '_' . $student_id . '_certificate.pdf' );
+			$filename = function_exists( 'cg_certificate_pdf_filename' )
+				? cg_certificate_pdf_filename( $student_name, '', (string) $student_id )
+				: sanitize_file_name( $student_name . '_' . $student_id . '_certificate.pdf' );
 			header( 'Content-Type: application/pdf' );
 			header( 'Content-Disposition: attachment; filename="' . $filename . '"' );
 			header( 'Content-Length: ' . filesize( $file_path ) );
@@ -434,7 +436,23 @@ function school_bulk_certificate_download_shortcode() {
 				while ( $students_query->have_posts() ) {
 					$students_query->the_post();
 					$student_id   = get_the_ID();
-					$student_name = get_post_meta( $student_id, 'student_name', true );
+
+					// SQL-first — post meta only exists for legacy CPT records.
+					$_sql_row     = function_exists( 'cg_get_sql_row_for_post_cached' )
+						? cg_get_sql_row_for_post_cached( $student_id, 'students' )
+						: null;
+					$student_name = ( $_sql_row && ! empty( $_sql_row['student_name'] ) )
+						? $_sql_row['student_name']
+						: (string) get_post_meta( $student_id, 'student_name', true );
+					$_sq_email    = ( $_sql_row && ! empty( $_sql_row['email'] ) )
+						? $_sql_row['email']
+						: (string) get_post_meta( $student_id, 'email', true );
+					global $wpdb;
+					$_cg_tbl = $wpdb->prefix . 'certificate_generator';
+					$_cg_id  = $_sq_email
+						// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery
+						? (int) $wpdb->get_var( $wpdb->prepare( "SELECT id FROM $_cg_tbl WHERE email = %s ORDER BY id DESC LIMIT 1", $_sq_email ) )
+						: 0;
 
 					// Update progress data
 					++$progress_data['processed'];
@@ -442,7 +460,9 @@ function school_bulk_certificate_download_shortcode() {
 					set_transient( 'certificate_progress_' . $session_id, $progress_data, 3600 );
 
 					// Fields to include in certificate
-					$cert_type_bulk = get_post_meta( $student_id, 'certificate_type', true );
+					$cert_type_bulk = ( $_sql_row && ! empty( $_sql_row['certificate_type'] ) )
+						? $_sql_row['certificate_type']
+						: (string) get_post_meta( $student_id, 'certificate_type', true );
 					$fields         = class_exists( 'CG_Field_Schema' )
 						? CG_Field_Schema::get_all_renderable_fields( $cert_type_bulk )
 						: array( 'student_name', 'school_name', 'issue_date' );
@@ -495,7 +515,9 @@ function school_bulk_certificate_download_shortcode() {
 						}
 
 						// Create a sanitized filename with student name and ID
-						$safe_name = sanitize_file_name( $student_name . '_' . $student_id . '_certificate.pdf' );
+						$safe_name = function_exists( 'cg_certificate_pdf_filename' )
+							? cg_certificate_pdf_filename( $student_name, $cert_type_bulk, $_cg_id ?: $student_id )
+							: sanitize_file_name( $student_name . '_' . $cert_type_bulk . '_' . ( $_cg_id ?: $student_id ) . '.pdf' );
 						$dest_path = $temp_dir . '/' . $safe_name;
 
 						// Check if file exists before attempting to copy
@@ -568,13 +590,15 @@ function school_bulk_certificate_download_shortcode() {
 
 				// Create ZIP file if we have certificates
 				if ( ! empty( $certificate_files ) ) {
-					$zip_filename = sanitize_file_name( $school_name . '_certificates.zip' );
-					$zip_path     = $upload_dir['basedir'] . '/' . $zip_filename;
-					$zip_url      = $upload_dir['baseurl'] . '/' . $zip_filename;
+					$zip_filename = function_exists( 'cg_certificate_zip_filename' )
+					? cg_certificate_zip_filename( $school_name )
+					: sanitize_file_name( $school_name . '_certificates.zip' );
+					$zip_path     = ( function_exists( 'cg_certificates_dir' ) ? cg_certificates_dir() : $upload_dir['basedir'] ) . '/' . $zip_filename;
+					$zip_url      = ( function_exists( 'cg_certificates_url' ) ? cg_certificates_url() : $upload_dir['baseurl'] ) . '/' . $zip_filename;
 
 					// Create new ZIP archive
 					$zip = new ZipArchive();
-					if ( $zip->open( $zip_path, ZipArchive::CREATE ) === true ) {
+					if ( $zip->open( $zip_path, ZipArchive::CREATE | ZipArchive::OVERWRITE ) === true ) {
 						// Add files to ZIP with proper naming
 						foreach ( $certificate_files as $file ) {
 							// Ensure the filename in the ZIP maintains the student_name_id format

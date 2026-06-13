@@ -15,6 +15,9 @@ function render_bulk_export_students_page() {
 function bulk_export_students() {
 	if ( isset( $_POST['export_students'] ) ) {
 		check_admin_referer( 'cg_export_students', '_wpnonce_cg_export' );
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_die( esc_html__( 'Insufficient permissions.', 'certificate-generator' ), 403 );
+		}
 		if ( ob_get_level() ) {
 			ob_end_clean();
 		}
@@ -62,7 +65,7 @@ function bulk_export_students() {
 				header( 'Expires: 0' );
 
 				$output  = fopen( 'php://output', 'w' );
-				$headers = array( 'student_name', 'email', 'phone', 'school_name', 'status', 'send_email' );
+				$headers = array( 'student_name', 'email', 'phone', 'school_name', 'certificate_type', 'issue_date', 'status', 'send_email' );
 				$headers = array_merge( $headers, $extra_keys );
 				fputcsv( $output, $headers );
 
@@ -74,9 +77,11 @@ function bulk_export_students() {
 					$csv_row = array(
 						$row['student_name'],
 						$row['email'],
-						$row['phone'],
+						$row['phone'] ?? '',
 						$row['school_name'],
-						$row['status'],
+						$row['certificate_type'] ?? '',
+						$row['issue_date'] ?? '',
+						$row['status'] ?? 'active',
 						isset( $row['send_email'] ) && ! $row['send_email'] ? 'false' : 'true',
 					);
 					foreach ( $extra_keys as $key ) {
@@ -175,6 +180,9 @@ function render_bulk_export_schools_page() {
 function bulk_export_schools() {
 	if ( isset( $_POST['export_schools'] ) ) {
 		check_admin_referer( 'cg_export_schools', '_wpnonce_cg_export' );
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_die( esc_html__( 'Insufficient permissions.', 'certificate-generator' ), 403 );
+		}
 		if ( ob_get_level() ) {
 			ob_end_clean();
 		}
@@ -220,7 +228,7 @@ function bulk_export_schools() {
 				header( 'Expires: 0' );
 
 				$output  = fopen( 'php://output', 'w' );
-				$headers = array( 'school_name', 'city', 'status', 'send_email' );
+				$headers = array( 'school_name', 'place', 'certificate_type', 'issue_date', 'status', 'send_email' );
 				$headers = array_merge( $headers, $extra_keys );
 				fputcsv( $output, $headers );
 
@@ -232,6 +240,8 @@ function bulk_export_schools() {
 					$csv_row = array(
 						$row['school_name'],
 						$row['city'] ?? '',
+						$row['certificate_type'] ?? '',
+						$row['issue_date'] ?? '',
 						$row['status'] ?? 'active',
 						isset( $row['send_email'] ) && ! $row['send_email'] ? 'false' : 'true',
 					);
@@ -315,6 +325,9 @@ function render_bulk_export_teachers_page() {
 function bulk_export_teachers() {
 	if ( isset( $_POST['export_teachers'] ) ) {
 		check_admin_referer( 'cg_export_teachers', '_wpnonce_cg_export' );
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_die( esc_html__( 'Insufficient permissions.', 'certificate-generator' ), 403 );
+		}
 		if ( ob_get_level() ) {
 			ob_end_clean();
 		}
@@ -460,6 +473,9 @@ function render_bulk_export_certificates_page() {
 function bulk_export_certificates() {
 	if ( isset( $_POST['export_certificates'] ) ) {
 		check_admin_referer( 'cg_export_certificates', '_wpnonce_cg_export' );
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_die( esc_html__( 'Insufficient permissions.', 'certificate-generator' ), 403 );
+		}
 		if ( ob_get_level() ) {
 			ob_end_clean();
 		}
@@ -518,8 +534,24 @@ function bulk_export_certificates() {
 				fputcsv( $output, $headers );
 
 				foreach ( $rows as $row ) {
-					$field_config = ! empty( $row['field_config'] ) ? json_decode( $row['field_config'], true ) : array();
-					$csv_row      = array(
+					// Field positions are stored as flat keys in extra_fields (e.g. field_1_position_x).
+					// field_config is a legacy column that may be empty — always prefer extra_fields.
+					$extra_data = array();
+					if ( ! empty( $row['extra_fields'] ) ) {
+						$decoded = json_decode( $row['extra_fields'], true );
+						if ( is_array( $decoded ) ) {
+							$extra_data = $decoded;
+						}
+					}
+					// Fall back to nested field_config for rows migrated from the old format.
+					$field_config = array();
+					if ( empty( $extra_data ) && ! empty( $row['field_config'] ) ) {
+						$decoded = json_decode( $row['field_config'], true );
+						if ( is_array( $decoded ) ) {
+							$field_config = $decoded;
+						}
+					}
+					$csv_row = array(
 						$row['template_name'],
 						$row['certificate_type'],
 						$row['event_date'] ?? '',
@@ -535,7 +567,8 @@ function bulk_export_certificates() {
 					);
 					for ( $i = 1; $i <= $max_fields; $i++ ) {
 						foreach ( array( 'position_x', 'position_y', 'visible', 'width', 'alignment' ) as $prop ) {
-							$csv_row[] = $field_config[ $i ][ $prop ] ?? '';
+							// Prefer flat extra_fields key, fall back to nested field_config.
+							$csv_row[] = $extra_data[ "field_{$i}_{$prop}" ] ?? $field_config[ $i ][ $prop ] ?? '';
 						}
 					}
 					fputcsv( $output, $csv_row );

@@ -364,9 +364,10 @@ function cg_ajax_toggle_bulk_send(): void {
 	);
 }
 
-// Add AJAX handler for sending emails
-add_action( 'wp_ajax_certificate_generator_send_single_email', 'certificate_generator_send_single_email_ajax' );
-function certificate_generator_send_single_email_ajax() {
+// certificate_generator_send_single_email_ajax removed — CPT-based, broken for deregistered CPTs.
+// Single-send entry point: cg_student_send_email in StudentsPage.php (SQL-backed).
+if ( false ) {
+function _cg_removed_placeholder() {
 	// Check nonce for security
 	check_ajax_referer( 'certificate_generator_send_email', 'nonce' );
 
@@ -404,64 +405,18 @@ function certificate_generator_send_single_email_ajax() {
 		wp_die();
 	}
 
-	// Check if certificate template exists
-	$certificate_query = new WP_Query(
-		array(
-			'post_type'      => 'certificates',
-			'posts_per_page' => 1,
-			'meta_query'     => array(
-				array(
-					'key'     => 'certificate_type',
-					'value'   => $certificate_type,
-					'compare' => '=',
-				),
-			),
-		)
-	);
+	// Check if certificate template exists — SQL table only.
+	$template = function_exists( 'cg_select_certificate_template' )
+		? cg_select_certificate_template( $certificate_type, '', false )
+		: null;
 
-	$template_id  = null;
-	$template_url = '';
-
-	if ( ! $certificate_query->have_posts() ) {
-		// Try case-insensitive match as a fallback
-		$found            = false;
-		$all_certificates = new WP_Query(
-			array(
-				'post_type'      => 'certificates',
-				'posts_per_page' => -1,
-			)
-		);
-
-		if ( $all_certificates->have_posts() ) {
-			while ( $all_certificates->have_posts() ) {
-				$all_certificates->the_post();
-				$template_type = get_post_meta( get_the_ID(), 'certificate_type', true );
-
-				if ( strtolower( trim( $template_type ) ) === strtolower( trim( $certificate_type ) ) ) {
-					$template_id = get_the_ID();
-					$found       = true;
-					break;
-				}
-			}
-			wp_reset_postdata();
-		}
-
-		if ( ! $found ) {
-			wp_send_json_error( array( 'message' => sprintf( __( 'No certificate template found for type: %s', 'certificate-generator' ), esc_html( $certificate_type ) ) ) );
-			wp_die();
-		}
-	} else {
-		$template_id = $certificate_query->posts[0]->ID;
-	}
-
-	// Check if template has a valid URL before attempting to generate certificate
-	if ( ! $template_id ) {
-		// If we somehow got here without a template ID, return an error
-		wp_send_json_error( array( 'message' => __( 'Certificate template ID is missing. Cannot generate certificate.', 'certificate-generator' ) ) );
+	if ( ! $template ) {
+		wp_send_json_error( array( 'message' => sprintf( __( 'No certificate template found for type: %s', 'certificate-generator' ), esc_html( $certificate_type ) ) ) );
 		wp_die();
 	}
 
-	$template_url = get_post_meta( $template_id, 'template_url', true );
+	$template_id  = $template->id ?? null;
+	$template_url = $template->template_url ?? '';
 
 	if ( empty( $template_url ) ) {
 		wp_send_json_error( array( 'message' => __( 'Certificate template is missing a background image URL.', 'certificate-generator' ) ) );
@@ -495,17 +450,18 @@ function certificate_generator_send_single_email_ajax() {
 	$field_count       = count( $fields );
 	$missing_positions = array();
 	$has_enough_fields = true;
+	$field_config      = ! empty( $template->field_config ) ? json_decode( $template->field_config, true ) : array();
 
 	// First check if we have enough field positions defined in the template
 	for ( $i = 1; $i <= $field_count; $i++ ) {
 		// Skip checking if field is not visible
-		$is_visible = get_post_meta( $template_id, "field_{$i}_visible", true );
-		if ( $is_visible === '0' ) {
+		$is_visible = $field_config[ $i ]['visible'] ?? '1';
+		if ( (string) $is_visible === '0' ) {
 			continue;
 		}
 
-		$position_x = get_post_meta( $template_id, "field_{$i}_position_x", true );
-		$position_y = get_post_meta( $template_id, "field_{$i}_position_y", true );
+		$position_x = $field_config[ $i ]['position_x'] ?? '';
+		$position_y = $field_config[ $i ]['position_y'] ?? '';
 
 		// Debug log to check what's happening
 		if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
@@ -561,8 +517,19 @@ function certificate_generator_send_single_email_ajax() {
 			cg_debug_log( "Certificate file already exists at: {$certificate_path}" );
 	}
 
+	// Look up the wp_certificate_generator row by email.
+	// certificate_generator_send_email() expects that table's id, not the WP post_id.
+	$cg_table = $wpdb->prefix . 'certificate_generator';
+	$cg_id    = (int) $wpdb->get_var( // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+		$wpdb->prepare( "SELECT id FROM $cg_table WHERE email = %s ORDER BY id DESC LIMIT 1", $email )
+	);
+	if ( ! $cg_id ) {
+		wp_send_json_error( array( 'message' => __( 'Certificate record not found for this email. Try regenerating the certificate first.', 'certificate-generator' ) ) );
+		wp_die();
+	}
+
 	// Now send the email
-	$success = certificate_generator_send_email( $post_id, 'Certificate Email' );
+	$success = certificate_generator_send_email( $cg_id );
 
 	if ( $success ) {
 		wp_send_json_success( array( 'message' => __( 'Email sent successfully!', 'certificate-generator' ) ) );
@@ -629,6 +596,7 @@ function certificate_generator_send_single_email_ajax() {
 	}
 	wp_die();
 }
+} // end if(false) — dead CPT send-single-email block
 
 // Add JavaScript to handle the email sending button
 add_action( 'admin_footer', 'certificate_generator_admin_footer_js' );

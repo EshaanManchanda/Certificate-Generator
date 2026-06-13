@@ -7,12 +7,12 @@ function cg_bulk_import_plan_gate_notice(): bool {
 	if ( ! class_exists( 'CG_License_Manager' ) || CG_License_Manager::is_pro() ) {
 		return false; // allowed
 	}
-	echo '<div class="wrap">';
+	// No wrapper <div class="wrap"> — the page renderer already provides it.
 	echo '<div class="notice notice-warning" style="padding:16px;border-left:4px solid #f59e0b;">';
-	echo '<h2 style="margin:0 0 8px;">🔒 Pro Feature</h2>';
+	echo '<h2 style="margin:0 0 8px;">&#x1F512; Pro Feature</h2>';
 	echo '<p>Bulk CSV import requires the <strong>Pro</strong> or <strong>Business</strong> plan.</p>';
-	echo '<p><a href="https://eshaanportfolio.vercel.app/" class="button button-primary" target="_blank">Upgrade Now →</a></p>';
-	echo '</div></div>';
+	echo '<p><a href="https://eshaanportfolio.vercel.app/" class="button button-primary" target="_blank">Upgrade Now &rarr;</a></p>';
+	echo '</div>';
 	return true; // blocked
 }
 
@@ -24,6 +24,9 @@ function bulk_import_students() {
 	// Check for file upload and nonce validation
 	if ( isset( $_POST['submit_students'] ) && isset( $_FILES['students_csv'] ) ) {
 		if ( check_admin_referer( 'bulk_import_students_nonce', '_wpnonce_bulk_import' ) ) {
+			if ( ! current_user_can( 'manage_options' ) ) {
+				wp_die( esc_html__( 'Insufficient permissions.', 'certificate-generator' ), 403 );
+			}
 			$file       = $_FILES['students_csv']['tmp_name'];
 			$file_error = $_FILES['students_csv']['error'];
 
@@ -158,11 +161,8 @@ function bulk_import_students() {
 						}
 					}
 
-					// Map phone_number → phone for the core column
-					$phone = '';
-					if ( ! empty( $student_data['phone_number'] ) ) {
-						$phone = sanitize_text_field( $student_data['phone_number'] );
-					}
+					// Accept both 'phone' (SQL export) and 'phone_number' (legacy export)
+					$phone = sanitize_text_field( $student_data['phone'] ?? $student_data['phone_number'] ?? '' );
 
 					// Insert student directly into custom SQL table
 					if ( class_exists( '\CertificateGenerator\Database\CustomTables' ) ) {
@@ -215,13 +215,19 @@ function bulk_import_students() {
 							$insert_data['extra_fields'] = wp_json_encode( $extra_fields );
 						}
 
-						// Upsert by email
-						$existing = $GLOBALS['wpdb']->get_var(
-							$GLOBALS['wpdb']->prepare(
-								"SELECT id FROM $student_table WHERE email = %s LIMIT 1",
-								sanitize_email( $student_data['email'] )
-							)
-						);
+						// Upsert by email + student_name when email present; always insert when email empty.
+						// Deduping on email alone fails when multiple students share a school/parent email.
+						$existing  = null;
+						$email_val = sanitize_email( $student_data['email'] );
+						if ( $email_val !== '' ) {
+							$existing = $GLOBALS['wpdb']->get_var(
+								$GLOBALS['wpdb']->prepare(
+									"SELECT id FROM $student_table WHERE email = %s AND student_name = %s LIMIT 1",
+									$email_val,
+									sanitize_text_field( $student_data['student_name'] )
+								)
+							);
+						}
 						if ( $existing ) {
 							$GLOBALS['wpdb']->update( $student_table, $insert_data, array( 'id' => $existing ) );
 						} else {
@@ -256,6 +262,7 @@ function bulk_import_students() {
 					}
 				}
 				echo '<div class="notice notice-success"><p>Successfully imported ' . $imported_count . ' students!' . esc_html( $extra_note ) . '</p></div>';
+				return; // Stop here — don't re-render the form after a successful import.
 			} else {
 				echo '<div class="notice notice-error"><p>Unable to open the file. Please check the file and try again.</p></div>';
 			}
@@ -286,6 +293,9 @@ function bulk_import_teachers() {
 	// Check for file upload and nonce validation
 	if ( isset( $_POST['submit_teachers'] ) && isset( $_FILES['teachers_csv'] ) ) {
 		if ( check_admin_referer( 'bulk_import_teachers_nonce', '_wpnonce_bulk_import' ) ) {
+			if ( ! current_user_can( 'manage_options' ) ) {
+				wp_die( esc_html__( 'Insufficient permissions.', 'certificate-generator' ), 403 );
+			}
 			$file       = $_FILES['teachers_csv']['tmp_name'];
 			$file_error = $_FILES['teachers_csv']['error'];
 
@@ -433,11 +443,8 @@ function bulk_import_teachers() {
 						}
 					}
 
-					// Map phone_number → phone for the core column
-					$phone = '';
-					if ( ! empty( $teacher_data['phone_number'] ) ) {
-						$phone = sanitize_text_field( $teacher_data['phone_number'] );
-					}
+					// Accept both 'phone' (SQL export) and 'phone_number' (legacy export)
+					$phone = sanitize_text_field( $teacher_data['phone'] ?? $teacher_data['phone_number'] ?? '' );
 
 					// send_email: optional CSV column. false/0/no → 0 (opt-out), anything else → 1 (default).
 					$_se_raw_t    = strtolower( trim( $teacher_data['send_email'] ?? '1' ) );
@@ -512,6 +519,9 @@ function bulk_import_schools() {
 	// Check for file upload and nonce validation
 	if ( isset( $_POST['submit_schools'] ) && isset( $_FILES['schools_csv'] ) ) {
 		if ( check_admin_referer( 'bulk_import_schools_nonce', '_wpnonce_bulk_import' ) ) {
+			if ( ! current_user_can( 'manage_options' ) ) {
+				wp_die( esc_html__( 'Insufficient permissions.', 'certificate-generator' ), 403 );
+			}
 			$file       = $_FILES['schools_csv']['tmp_name'];
 			$file_error = $_FILES['schools_csv']['error'];
 
@@ -563,12 +573,21 @@ function bulk_import_schools() {
 					$header
 				);
 
-				// Validate headers match the required fields
-				$required_fields = array( 'school_name', 'place', 'issue_date', 'certificate_type' );
+				// Validate headers — accept 'place' (current export) or 'city' (old SQL export) for the city field
+				$has_place = in_array( 'place', $header_keys, true );
+				$has_city  = in_array( 'city', $header_keys, true );
+				$required_fields = array(
+					'school_name',
+					( $has_place || ! $has_city ) ? 'place' : 'city',
+					'issue_date',
+					'certificate_type',
+				);
 
 				// Check only for missing required fields — never reject extra columns
-				$missing_fields = array_diff( $required_fields, $header_keys );
-				$extra_columns  = array_values( array_filter( array_diff( $header_keys, $required_fields ) ) );
+				// Also treat the unused city/place alias as an allowed extra.
+				$known_optional  = array( 'status', 'send_email', $has_place ? 'city' : 'place' );
+				$missing_fields  = array_diff( $required_fields, $header_keys );
+				$extra_columns   = array_values( array_filter( array_diff( $header_keys, array_merge( $required_fields, $known_optional ) ) ) );
 
 				if ( ! empty( $missing_fields ) ) {
 					$error_msg  = '<strong>Invalid CSV format.</strong><br><br>';
@@ -639,7 +658,7 @@ function bulk_import_schools() {
 
 					$insert_data = array(
 						'school_name'      => $school_name,
-						'city'             => sanitize_text_field( $school_data['place'] ?? '' ),
+						'city'             => sanitize_text_field( $school_data['place'] ?? $school_data['city'] ?? '' ),
 						'certificate_type' => $cert_type,
 						'issue_date'       => $_s_issue_stored ?: null,
 						'status'           => 'active',
@@ -703,6 +722,9 @@ function bulk_import_certificates() {
 	// Check for file upload and nonce validation
 	if ( isset( $_POST['submit_certificates'] ) && isset( $_FILES['certificates_csv'] ) ) {
 		if ( check_admin_referer( 'bulk_import_certificates_nonce', '_wpnonce_bulk_import' ) ) {
+			if ( ! current_user_can( 'manage_options' ) ) {
+				wp_die( esc_html__( 'Insufficient permissions.', 'certificate-generator' ), 403 );
+			}
 			$file       = $_FILES['certificates_csv']['tmp_name'];
 			$file_error = $_FILES['certificates_csv']['error'];
 
@@ -749,11 +771,14 @@ function bulk_import_certificates() {
 				);
 
 				// Validate headers match the required fields
-				$required_fields = array(
+				// Accept both 'orientation' (export format) and 'template_orientation' (legacy)
+				$has_orientation          = in_array( 'orientation', $header, true );
+				$has_template_orientation = in_array( 'template_orientation', $header, true );
+				$required_fields          = array(
 					'certificate_type',
 					'event_date',           // Y-m-d or empty — used for date-based template matching
 					'template_url',
-					'template_orientation',
+					$has_orientation && ! $has_template_orientation ? 'orientation' : 'template_orientation',
 					'font_size',
 					'font_color',
 					'font_style',
@@ -774,9 +799,18 @@ function bulk_import_certificates() {
 					'field_3_alignment',
 				);
 
-				// Build allowed optional columns: template_field_count + field_4..MAX_FIELDS slots
+				// Build allowed optional columns: export-format extras + template_field_count + field_4..MAX_FIELDS slots
 				$max_fields             = class_exists( 'CG_Field_Schema' ) ? CG_Field_Schema::MAX_FIELDS : 15;
-				$optional_field_columns = array( 'template_field_count' );
+				$optional_field_columns = array(
+					'template_field_count',
+					'template_name',
+					'page_size',
+					'qr_enabled',
+					'serial_number_display',
+					'status',
+					// Accept whichever orientation alias wasn't chosen as required
+					$has_orientation && ! $has_template_orientation ? 'template_orientation' : 'orientation',
+				);
 				for ( $i = 4; $i <= $max_fields; $i++ ) {
 					foreach ( array( 'position_x', 'position_y', 'visible', 'width', 'alignment' ) as $prop ) {
 						$optional_field_columns[] = "field_{$i}_{$prop}";
@@ -900,30 +934,42 @@ function bulk_import_certificates() {
 							continue; // Skip duplicate
 						}
 
-						$orientation = sanitize_key( $certificate_data['template_orientation'] ?? 'landscape' );
+						$orientation = sanitize_key( $certificate_data['template_orientation'] ?? $certificate_data['orientation'] ?? 'landscape' );
 						if ( ! in_array( $orientation, array( 'portrait', 'landscape' ), true ) ) {
 							$orientation = 'landscape';
 						}
 
+						$page_size_raw = $certificate_data['page_size'] ?? 'A4';
+						$page_size     = in_array( $page_size_raw, array( 'A4', 'Letter', 'Legal', 'Custom' ), true ) ? $page_size_raw : 'A4';
+
+						$qr_raw              = strtolower( trim( $certificate_data['qr_enabled'] ?? '0' ) );
+						$qr_enabled          = ! in_array( $qr_raw, array( '', '0', 'false', 'no' ), true ) ? 1 : 0;
+						$sn_raw              = strtolower( trim( $certificate_data['serial_number_display'] ?? '0' ) );
+						$serial_number_disp  = ! in_array( $sn_raw, array( '', '0', 'false', 'no' ), true ) ? 1 : 0;
+
 						$host          = $template_url ? parse_url( $template_url, PHP_URL_HOST ) : null;
 						$date_suffix   = $event_date ? ' (' . $event_date . ')' : '';
-						$template_name = ( $certificate_type ?: 'Certificate' ) . $date_suffix . ( $host ? ' — ' . $host : '' );
+						$auto_name     = ( $certificate_type ?: 'Certificate' ) . $date_suffix . ( $host ? ' — ' . $host : '' );
+						$template_name = sanitize_text_field( $certificate_data['template_name'] ?? '' ) ?: $auto_name;
 
 						$wpdb->insert(
 							$tpl_table,
 							array(
-								'template_name'    => $template_name,
-								'certificate_type' => $certificate_type,
-								'event_date'       => $event_date ?: null,
-								'template_url'     => $template_url,
-								'orientation'      => $orientation,
-								'font_size'        => absint( $certificate_data['font_size'] ?? 12 ),
-								'font_color'       => sanitize_hex_color( $certificate_data['font_color'] ?? '#000000' ) ?: '#000000',
-								'font_style'       => sanitize_key( $certificate_data['font_style'] ?? 'helvetica' ),
-								'status'           => 'published',
-								'extra_fields'     => wp_json_encode( $extra_fields_json ),
-								'created_at'       => current_time( 'mysql' ),
-								'updated_at'       => current_time( 'mysql' ),
+								'template_name'         => $template_name,
+								'certificate_type'      => $certificate_type,
+								'event_date'            => $event_date ?: null,
+								'template_url'          => $template_url,
+								'orientation'           => $orientation,
+								'page_size'             => $page_size,
+								'font_size'             => absint( $certificate_data['font_size'] ?? 12 ),
+								'font_color'            => sanitize_hex_color( $certificate_data['font_color'] ?? '#000000' ) ?: '#000000',
+								'font_style'            => sanitize_key( $certificate_data['font_style'] ?? 'helvetica' ),
+								'qr_enabled'            => $qr_enabled,
+								'serial_number_display' => $serial_number_disp,
+								'status'                => 'published',
+								'extra_fields'          => wp_json_encode( $extra_fields_json ),
+								'created_at'            => current_time( 'mysql' ),
+								'updated_at'            => current_time( 'mysql' ),
 							)
 						);
 
@@ -969,7 +1015,7 @@ function bulk_import_certificates() {
 						update_post_meta( $post_id, 'certificate_type', $certificate_type );
 						update_post_meta( $post_id, 'event_date', $event_date );
 						update_post_meta( $post_id, 'template_url', $template_url );
-						update_post_meta( $post_id, 'template_orientation', sanitize_key( $certificate_data['template_orientation'] ?? 'landscape' ) );
+						update_post_meta( $post_id, 'template_orientation', sanitize_key( $certificate_data['template_orientation'] ?? $certificate_data['orientation'] ?? 'landscape' ) );
 						update_post_meta( $post_id, 'font_size', absint( $certificate_data['font_size'] ?? 12 ) );
 						update_post_meta( $post_id, 'font_color', sanitize_hex_color( $certificate_data['font_color'] ?? '#000000' ) ?: '#000000' );
 						update_post_meta( $post_id, 'font_style', sanitize_key( $certificate_data['font_style'] ?? 'helvetica' ) );

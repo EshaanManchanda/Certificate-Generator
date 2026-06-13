@@ -62,6 +62,72 @@ function cg_generate_pdf_from_row( array $row ): ?string {
 		return $row['pdf_path'];
 	}
 
+	global $wpdb;
+
+	// ── SQL-first path: look up live entity row, call generate_certificate_pdf ──
+	// Uses fresh data from wp_cg_* tables and avoids visual_debug markers.
+	if ( function_exists( 'generate_certificate_pdf' )
+		&& ! empty( $row['email'] )
+		&& ! empty( $row['certificate_type'] )
+		&& class_exists( '\CertificateGenerator\Database\CustomTables' )
+	) {
+		$tables = \CertificateGenerator\Database\CustomTables::instance();
+		foreach ( array( 'students', 'teachers', 'schools' ) as $entity ) {
+			$tbl = $tables->get_table( $entity );
+			if ( empty( $tbl ) || $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $tbl ) ) !== $tbl ) {
+				continue;
+			}
+			$sql_row = $wpdb->get_row(
+				$wpdb->prepare(
+					"SELECT * FROM $tbl WHERE email = %s AND certificate_type = %s LIMIT 1",
+					$row['email'],
+					$row['certificate_type']
+				),
+				ARRAY_A
+			);
+			if ( empty( $sql_row ) ) {
+				continue;
+			}
+			// wp_post_id may be 0 for bulk-imported rows with no CPT post.
+			// generate_certificate_pdf() works with post_id=0 when $student_data is supplied.
+			$post_id   = (int) ( $sql_row['wp_post_id'] ?? 0 );
+			$cert_type = $sql_row['certificate_type'] ?? '';
+			$fields    = class_exists( 'CG_Field_Schema' )
+				? CG_Field_Schema::get_all_renderable_fields( $cert_type )
+				: array( 'student_name', 'school_name', 'issue_date' );
+			$file_url = generate_certificate_pdf( $post_id, $fields, $sql_row );
+			if ( $file_url ) {
+				// Derive filesystem path from URL — don't rely on postmeta which
+				// may not be saved when wp_post_id = 0.
+				$path = wp_normalize_path(
+					str_replace(
+						cg_certificates_url(),
+						cg_certificates_dir(),
+						$file_url
+					)
+				);
+				if ( ! file_exists( $path ) && $post_id > 0 ) {
+					// Fallback: try postmeta in case file landed elsewhere.
+					$path = wp_normalize_path( (string) get_post_meta( $post_id, 'certificate_file_path', true ) );
+				}
+				if ( $path && file_exists( $path ) ) {
+					if ( ! empty( $row['id'] ) ) {
+						$wpdb->update(
+							$wpdb->prefix . 'certificate_generator',
+							array( 'pdf_path' => $path ),
+							array( 'id' => $row['id'] ),
+							array( '%s' ),
+							array( '%d' )
+						);
+					}
+					return $path;
+				}
+			}
+			break; // found entity table; don't check others
+		}
+	}
+
+	// ── Fallback: generate from stored JSON blob ──────────────────────────────
 	if ( ! function_exists( 'generate_certificate_pdf_with_data' ) ) {
 		return null;
 	}
@@ -88,7 +154,6 @@ function cg_generate_pdf_from_row( array $row ): ?string {
 	}
 
 	if ( $path ) {
-		global $wpdb;
 		$wpdb->update(
 			$wpdb->prefix . 'certificate_generator',
 			array( 'pdf_path' => $path ),
@@ -160,10 +225,9 @@ function certificate_generator_create_zip_for_email( $certificates_data, $recipi
 	}
 
 	// Build ZIP file path + URL.
-	$email_slug = preg_replace( '/[^a-z0-9]/', '_', strtolower( $recipient_email ) );
-	$zip_name   = 'certificates_' . $email_slug . '_' . time() . '.zip';
-	$zip_path   = trailingslashit( $upload_dir['basedir'] ) . $zip_name;
-	$zip_url    = trailingslashit( $upload_dir['baseurl'] ) . $zip_name;
+	$zip_name   = function_exists( 'cg_certificate_zip_filename' ) ? cg_certificate_zip_filename( $recipient_email ) : 'certificates_' . preg_replace( '/[^a-z0-9]/', '_', strtolower( $recipient_email ) ) . '_' . time() . '.zip';
+	$zip_path   = cg_certificates_dir() . '/' . $zip_name;
+	$zip_url    = cg_certificates_url() . '/' . $zip_name;
 
 	$zip = new ZipArchive();
 	if ( $zip->open( $zip_path, ZipArchive::CREATE | ZipArchive::OVERWRITE ) !== true ) {
@@ -256,28 +320,65 @@ function certificate_generator_send_email( $cg_id, $log_email = true ) {
 	}
 
 	$recipient_email  = $anchor['email'];
-	$recipient_name   = $anchor['student_name'];
+	$recipient_name   = ''; // resolved from SQL table below; legacy anchor is last resort
 	$certificate_type = $anchor['certificate_type'] ?? '';
-
-	// Derive email template prefix from stored post_type in certificate_data; default students.
-	$cert_data_arr = ! empty( $anchor['certificate_data'] ) ? json_decode( $anchor['certificate_data'], true ) : array();
-	$entity_type   = $cert_data_arr['post_type'] ?? 'students';
-	if ( ! in_array( $entity_type, array( 'students', 'teachers', 'schools' ), true ) ) {
-		$entity_type = 'students';
-	}
-	$prefix = $entity_type . '_email_';
 
 	$options = get_option( 'certificate_generator_settings_email' );
 
-	// Collect all certs for this email from the custom table.
-	$all_rows = cg_get_certs_by_email( $recipient_email );
-	cg_email_debug_log( 'Found ' . count( $all_rows ) . " certs for {$recipient_email}" );
+	// SQL-first: collect certs from wp_cg_students/teachers/schools — the same source
+	// the shortcode uses. wp_certificate_generator can have duplicates; wp_cg_* cannot.
+	$all_rows    = array();
+	$entity_type = 'students'; // default; overridden below when we find the table
+	if ( class_exists( '\CertificateGenerator\Database\CustomTables' ) ) {
+		$tables = \CertificateGenerator\Database\CustomTables::instance();
+		foreach ( array( 'students', 'teachers', 'schools' ) as $_ent ) {
+			$_tbl = $tables->get_table( $_ent );
+			if ( empty( $_tbl ) || $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $_tbl ) ) !== $_tbl ) {
+				continue;
+			}
+			$_rows = $wpdb->get_results(
+				$wpdb->prepare( "SELECT * FROM $_tbl WHERE email = %s ORDER BY id ASC", $recipient_email ),
+				ARRAY_A
+			);
+			if ( ! empty( $_rows ) ) {
+				// Normalize field names cg_generate_pdf_from_row / cert building expect.
+				foreach ( $_rows as &$_r ) {
+					if ( ! isset( $_r['student_name'] ) ) {
+						$_r['student_name'] = $_r['teacher_name'] ?? $_r['school_name'] ?? '';
+					}
+				}
+				unset( $_r );
+				$all_rows    = $_rows;
+				$entity_type = $_ent;
+				break; // one entity type per email address
+			}
+		}
+	}
+	// Fallback to legacy table only when SQL tables are missing/empty.
+	if ( empty( $all_rows ) ) {
+		$all_rows = cg_get_certs_by_email( $recipient_email );
+	}
+	cg_email_debug_log( 'Found ' . count( $all_rows ) . " certs for {$recipient_email} (entity: {$entity_type})" );
 
+	// SQL table is authoritative; legacy anchor is last resort.
+	$recipient_name = ! empty( $all_rows[0]['student_name'] )
+		? $all_rows[0]['student_name']
+		: ( $anchor['student_name'] ?? '' );
+
+	$prefix  = $entity_type . '_email_';
 	$use_zip = count( $all_rows ) > 1;
 
-	$subject = isset( $options[ $prefix . 'subject' ] ) ? $options[ $prefix . 'subject' ] : sprintf( __( 'Your %s Certificate', 'certificate-generator' ), ucfirst( rtrim( $entity_type, 's' ) ) );
-	$title   = isset( $options[ $prefix . 'title' ] ) ? $options[ $prefix . 'title' ] : sprintf( __( 'Your %s Certificate is Ready', 'certificate-generator' ), ucfirst( rtrim( $entity_type, 's' ) ) );
-	$message = isset( $options[ $prefix . 'message' ] ) ? $options[ $prefix . 'message' ] : sprintf( __( 'Dear {name},\n\nPlease find attached your %s certificate.\n\nThank you!', 'certificate-generator' ), rtrim( $entity_type, 's' ) );
+	// Priority: per-entity-type template → global cg_email_* (via SettingsService for defaults).
+	$_ss     = class_exists( '\CertificateGenerator\Services\SettingsService' );
+	$subject = ! empty( $options[ $prefix . 'subject' ] )
+		? $options[ $prefix . 'subject' ]
+		: ( $_ss ? \CertificateGenerator\Services\SettingsService::get( 'cg_email_subject' ) : get_option( 'cg_email_subject', '' ) );
+	$title   = ! empty( $options[ $prefix . 'title' ] )
+		? $options[ $prefix . 'title' ]
+		: get_option( 'cg_email_title', '' );
+	$message = ! empty( $options[ $prefix . 'message' ] )
+		? $options[ $prefix . 'message' ]
+		: ( $_ss ? \CertificateGenerator\Services\SettingsService::get( 'cg_email_body' ) : get_option( 'cg_email_body', '' ) );
 
 	// Generate result page URL
 	$result_page_url = home_url( '/result/?student_email=' . urlencode( $recipient_email ) );
@@ -337,9 +438,12 @@ function certificate_generator_send_email( $cg_id, $log_email = true ) {
 
 			$cert_path = wp_normalize_path( $cert_path );
 
+			$_pdf_name = function_exists( 'cg_certificate_pdf_filename' )
+				? cg_certificate_pdf_filename( $cert_row['student_name'], $cert_row['certificate_type'] ?? '', (string) $cert_row['id'] )
+				: basename( $cert_path );
 			$certificates_data[]         = array(
 				'path'     => $cert_path,
-				'filename' => basename( $cert_path ),
+				'filename' => $_pdf_name,
 				'cg_id'    => (int) $cert_row['id'],
 				'name'     => $cert_row['student_name'],
 				'type'     => $cert_row['certificate_type'] ?? '',
@@ -434,13 +538,16 @@ function certificate_generator_send_email( $cg_id, $log_email = true ) {
 	$message = do_shortcode( $message );
 	$title   = do_shortcode( $title );
 
-	// Check if {result_link} placeholder was used in the original template
-	$original_message_template = isset( $options[ $prefix . 'message' ] ) ? $options[ $prefix . 'message' ] : '';
-	$result_link_used          = strpos( $original_message_template, '{result_link}' ) !== false;
+	// Check final $message (covers per-type + global template) for result_link usage.
+	$result_link_used = strpos( $message, $result_page_url ) !== false
+		|| strpos( $message, '{result_link}' ) !== false;
+
+	// Title falls back to certificate type when no explicit email title is set.
+	$display_title = $title ?: $certificate_type;
 
 	// Format HTML email
 	$html_message  = '<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">';
-	$html_message .= '<h1 style="color: #2c3e50; margin-bottom: 20px;">' . esc_html( $title ) . '</h1>';
+	$html_message .= '<h1 style="color: #2c3e50; margin-bottom: 20px;">' . esc_html( $display_title ) . '</h1>';
 	$html_message .= '<div style="line-height: 1.6; color: #333;">' . wpautop( $message ) . '</div>';
 
 	// Auto-add result page button if {result_link} placeholder was not used
@@ -1270,7 +1377,7 @@ function certificate_generator_queue_bulk_emails_async( $post_type, $skip_alread
 			$cg_ids = array_map(
 				'intval',
 				$wpdb->get_col(
-					$wpdb->prepare( "SELECT id FROM $cg_table WHERE email IN ($placeholders) ORDER BY id ASC", $emails )
+					$wpdb->prepare( "SELECT MIN(id) FROM $cg_table WHERE email IN ($placeholders) GROUP BY email ORDER BY MIN(id) ASC", $emails )
 				)
 			);
 		}
@@ -1282,7 +1389,7 @@ function certificate_generator_queue_bulk_emails_async( $post_type, $skip_alread
 		$cg_ids = array_map(
 			'intval',
 			$wpdb->get_col(
-				"SELECT id FROM $cg_table WHERE email != '' ORDER BY id ASC"
+				"SELECT MIN(id) FROM $cg_table WHERE email != '' GROUP BY email ORDER BY MIN(id) ASC"
 			)
 		);
 		if ( empty( $cg_ids ) ) {
@@ -1350,35 +1457,11 @@ function certificate_generator_queue_bulk_emails_batch( $post_type, $skip_alread
 	$result['errors']  = $queue_result['errors'];
 	$result['success'] = $queue_result['queued'] > 0 || empty( $queue_result['errors'] );
 
-	if ( $result['queued'] > 0 ) {
-		wp_remote_post(
-			admin_url( 'admin-ajax.php' ),
-			array(
-				'timeout'  => 0.01,
-				'blocking' => false,
-				'body'     => array( 'action' => 'cert_trigger_queue_processing' ),
-			)
-		);
+	if ( $result['queued'] > 0 && function_exists( 'certificate_generator_process_queue_batch' ) ) {
+		certificate_generator_process_queue_batch();
 	}
 
 	return $result;
-}
-
-/**
- * AJAX handler to trigger existing queue processing (wrapper)
- */
-add_action( 'wp_ajax_cert_trigger_queue_processing', 'certificate_generator_trigger_queue_processing' );
-function certificate_generator_trigger_queue_processing() {
-	if ( ! current_user_can( 'edit_posts' ) ) {
-		wp_send_json_error( __( 'Insufficient permissions', 'certificate-generator' ), 403 );
-	}
-	check_ajax_referer( 'certificate_generator_bulk_email', 'nonce' );
-
-	// Trigger the existing queue processor from bulk-email-sender.php
-	if ( function_exists( 'certificate_generator_process_queue_now' ) ) {
-		certificate_generator_process_queue_now( 1 );
-	}
-	wp_die();
 }
 
 /**

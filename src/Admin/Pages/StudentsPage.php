@@ -55,6 +55,7 @@ class StudentsPage {
 			$this->edit_slug,
 			array( $this, 'render_edit' )
 		);
+		\add_action( 'wp_ajax_cg_student_send_email', array( $this, 'send_email_ajax' ) );
 	}
 
 	// ── List View ────────────────────────────────────────────────────────────
@@ -145,6 +146,15 @@ class StudentsPage {
 
 		$schools    = $wpdb->get_col( "SELECT DISTINCT school_name FROM $table WHERE school_name != '' ORDER BY school_name" ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 		$cert_types = $wpdb->get_col( "SELECT DISTINCT certificate_type FROM $table WHERE certificate_type != '' ORDER BY certificate_type" ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+
+		// Batch-fetch email status for this page's rows via EmailStatusService (merged logs+queue).
+		$email_statuses = array();
+		if ( ! empty( $rows ) ) {
+			$page_emails = array_unique( array_filter( array_column( $rows, 'email' ) ) );
+			if ( ! empty( $page_emails ) && class_exists( '\CertificateGenerator\Services\EmailStatusService' ) ) {
+				$email_statuses = \CertificateGenerator\Services\EmailStatusService::getBadgeStatuses( $page_emails );
+			}
+		}
 
 		$total_pages = (int) ceil( $total / $per_page );
 		$list_url    = \admin_url( 'admin.php?page=' . $this->slug );
@@ -240,11 +250,12 @@ class StudentsPage {
 							<a href="<?php echo \esc_url( $sort_url ); ?>"><span><?php echo \esc_html( $col_label ); ?></span><span class="sorting-indicators"><span class="sorting-indicator asc"></span><span class="sorting-indicator desc"></span></span></a>
 						</th>
 						<?php endforeach; ?>
+						<th scope="col">Email Status</th>
 						<th>Actions</th>
 					</tr></thead>
 					<tbody>
 						<?php if ( empty( $rows ) ) : ?>
-							<tr><td colspan="9"><em>No students found. <a href="<?php echo \esc_url( $edit_url ); ?>">Add one</a>.</em></td></tr>
+							<tr><td colspan="10"><em>No students found. <a href="<?php echo \esc_url( $edit_url ); ?>">Add one</a>.</em></td></tr>
 							<?php
 						else :
 							foreach ( $rows as $row ) :
@@ -260,6 +271,34 @@ class StudentsPage {
 							<td><?php echo $issue ? \esc_html( $issue->format( 'd-m-Y' ) ) : '—'; ?></td>
 							<td><code><?php echo \esc_html( $row['serial_number'] ?? '' ); ?></code></td>
 							<td><?php echo \esc_html( ucfirst( $row['status'] ?? 'active' ) ); ?></td>
+							<td class="cg-email-status-cell" data-row="<?php echo \absint( $row_id ); ?>">
+								<?php
+								if ( empty( $row['email'] ) ) {
+									echo '<span style="color:#888;">No Email</span>';
+								} else {
+									$badge     = $email_statuses[ $row['email'] ] ?? array( 'status' => 'NotSent', 'last_error' => '', 'attempts' => 0 );
+									$status    = $badge['status'];
+									$err_title = ! empty( $badge['last_error'] ) ? ' title="' . \esc_attr( $badge['last_error'] ) . '"' : '';
+									switch ( $status ) {
+										case 'Sent':
+											echo '<span class="cg-email-badge cg-email-sent" style="color:#46b450;">&#10003; Sent</span>';
+											break;
+										case 'Failed':
+											echo '<span class="cg-email-badge cg-email-failed" style="color:#d63638;"' . $err_title . '>&#10007; Failed</span>';
+											break;
+										case 'Sending':
+											echo '<span class="cg-email-badge cg-email-sending" style="color:#0073aa;">&#8635; Sending</span>';
+											break;
+										case 'Queued':
+											echo '<span class="cg-email-badge cg-email-queued" style="color:#0073aa;">&#8635; Queued</span>';
+											break;
+										default:
+											echo '<span class="cg-email-badge cg-email-pending" style="color:#ffb900;">Pending</span>';
+											break;
+									}
+								}
+								?>
+							</td>
 							<td>
 								<a href="<?php echo \esc_url( \add_query_arg( 'id', $row_id, $edit_url ) ); ?>">Edit</a>
 								&nbsp;|&nbsp;
@@ -282,6 +321,13 @@ class StudentsPage {
 								"
 									style="color:#d63638;"
 									onclick="return confirm('Delete this student?');">Delete</a>
+								<?php if ( ! empty( $row['email'] ) ) : ?>
+									&nbsp;|&nbsp;
+									<button type="button"
+										class="button-link cg-send-email-btn"
+										data-id="<?php echo $row_id; ?>"
+										style="color:#0073aa; cursor:pointer;">Send Email</button>
+								<?php endif; ?>
 							</td>
 						</tr>
 													<?php
@@ -293,6 +339,9 @@ endif;
 			</form>
 		</div>
 		<script>
+		var cgStudentSendNonce = '<?php echo \esc_js( \wp_create_nonce( 'cg_student_send_email' ) ); ?>';
+		var cgStudentAjaxUrl  = '<?php echo \esc_js( \admin_url( 'admin-ajax.php' ) ); ?>';
+
 		document.getElementById('cb-select-all').addEventListener('change', function() {
 			document.querySelectorAll('.cb-select').forEach(function(cb){ cb.checked = this.checked; }.bind(this));
 		});
@@ -323,6 +372,44 @@ endif;
 			} else if (!action) {
 				e.preventDefault();
 			}
+		});
+
+		// Per-student Send Email
+		document.querySelectorAll('.cg-send-email-btn').forEach(function(btn) {
+			btn.addEventListener('click', function() {
+				var studentId = btn.getAttribute('data-id');
+				var originalText = btn.textContent;
+				btn.textContent = 'Sending…';
+				btn.disabled = true;
+
+				var data = new URLSearchParams();
+				data.append('action', 'cg_student_send_email');
+				data.append('nonce', cgStudentSendNonce);
+				data.append('id', studentId);
+
+				fetch(cgStudentAjaxUrl, { method: 'POST', body: data })
+					.then(function(r){ return r.json(); })
+					.then(function(resp) {
+						if (resp.success) {
+							// Flip badge in same row
+							var statusCell = document.querySelector('.cg-email-status-cell[data-row="' + studentId + '"]');
+							if (statusCell) {
+								statusCell.innerHTML = '<span class="cg-email-badge cg-email-sent" style="color:#46b450;">&#10003; Sent</span>';
+							}
+							btn.textContent = 'Sent ✓';
+							btn.style.color = '#46b450';
+						} else {
+							alert('Send failed: ' + (resp.data && resp.data.message ? resp.data.message : 'Unknown error'));
+							btn.textContent = originalText;
+							btn.disabled = false;
+						}
+					})
+					.catch(function() {
+						alert('Request failed. Check network and try again.');
+						btn.textContent = originalText;
+						btn.disabled = false;
+					});
+			});
 		});
 		</script>
 		<?php
@@ -505,5 +592,83 @@ endif;
 		});
 		</script>
 		<?php
+	}
+
+	// ── AJAX: per-student send email. ───────────────────────────────────────
+
+	/**
+	 * AJAX handler: send a certificate email to a single student by cg_students.id.
+	 *
+	 * Nonce: cg_student_send_email. Capability: manage_options.
+	 * Bypasses the send_email opt-out flag (admin-initiated send).
+	 *
+	 * @return void Outputs JSON and exits.
+	 */
+	public function send_email_ajax(): void {
+		\check_ajax_referer( 'cg_student_send_email', 'nonce' );
+
+		if ( ! \current_user_can( 'manage_options' ) ) {
+			\wp_send_json_error( array( 'message' => 'Insufficient permissions.' ) );
+		}
+
+		$id = \absint( $_POST['id'] ?? 0 );
+		if ( ! $id ) {
+			\wp_send_json_error( array( 'message' => 'Invalid student ID.' ) );
+		}
+
+		global $wpdb;
+		$table = CustomTables::instance()->get_table( $this->table_key );
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+		$row = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM $table WHERE id = %d LIMIT 1", $id ), \ARRAY_A );
+
+		if ( ! $row ) {
+			\wp_send_json_error( array( 'message' => 'Student not found.' ) );
+		}
+
+		$email     = \sanitize_email( $row['email'] ?? '' );
+		$name      = \sanitize_text_field( $row['student_name'] ?? '' );
+		$cert_type = \sanitize_text_field( $row['certificate_type'] ?? '' );
+
+		if ( ! \is_email( $email ) ) {
+			\wp_send_json_error( array( 'message' => 'Student has no valid email address.' ) );
+		}
+
+		// Resolve legacy anchor row — certificate_generator_send_email() expects its id.
+		$cg_table = $wpdb->prefix . 'certificate_generator';
+		$cg_id = (int) $wpdb->get_var( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+			$wpdb->prepare( "SELECT id FROM $cg_table WHERE email = %s ORDER BY id DESC LIMIT 1", $email ) // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		);
+
+		if ( ! $cg_id ) {
+			// No legacy anchor — insert a minimal row so the send function can resolve the email.
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery
+			$wpdb->insert(
+				$cg_table,
+				array(
+					'email'            => $email,
+					'student_name'     => $name,
+					'certificate_type' => $cert_type,
+					'issued_at'        => \current_time( 'mysql' ),
+					'generated_via'    => 'manual',
+				)
+			);
+			$cg_id = (int) $wpdb->insert_id;
+		}
+
+		if ( ! $cg_id ) {
+			\wp_send_json_error( array( 'message' => 'Could not create certificate record. Check database permissions.' ) );
+		}
+
+		if ( ! function_exists( 'certificate_generator_send_email' ) ) {
+			\wp_send_json_error( array( 'message' => 'Email send function unavailable.' ) );
+		}
+
+		$success = certificate_generator_send_email( $cg_id );
+
+		if ( $success ) {
+			\wp_send_json_success( array( 'message' => 'Email sent successfully.' ) );
+		} else {
+			\wp_send_json_error( array( 'message' => 'Email send failed. Check server email configuration and error logs.' ) );
+		}
 	}
 }

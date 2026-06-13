@@ -72,8 +72,32 @@ function certificate_generator_queue_email( $cg_id, $recipient_email, $options =
 		return false;
 	}
 
-	$recipient_name   = $row['student_name'] ?? '';
 	$certificate_type = $row['certificate_type'] ?? '';
+
+	// SQL tables are authoritative for name; legacy row is last resort.
+	$recipient_name = '';
+	if ( class_exists( '\CertificateGenerator\Database\CustomTables' ) ) {
+		$tables = \CertificateGenerator\Database\CustomTables::instance();
+		foreach ( array(
+			array( 'students', 'student_name' ),
+			array( 'teachers', 'teacher_name' ),
+			array( 'schools', 'school_name' ),
+		) as [$ent, $col] ) {
+			$tbl = $tables->get_table( $ent );
+			if ( ! $tbl ) {
+				continue;
+			}
+			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+			$name = $wpdb->get_var( $wpdb->prepare( "SELECT $col FROM $tbl WHERE email = %s LIMIT 1", $recipient_email ) );
+			if ( $name ) {
+				$recipient_name = $name;
+				break;
+			}
+		}
+	}
+	if ( ! $recipient_name ) {
+		$recipient_name = $row['student_name'] ?? '';
+	}
 
 	$existing = $wpdb->get_var(
 		$wpdb->prepare(
@@ -125,15 +149,18 @@ function certificate_generator_get_next_batch( $limit = 10 ) {
 	$table_name   = $wpdb->prefix . 'cert_email_queue';
 	$current_time = current_time( 'mysql' );
 
-	$emails = $wpdb->get_results(
+	$max_attempts = defined( 'CG_QUEUE_MAX_ATTEMPTS' ) ? (int) CG_QUEUE_MAX_ATTEMPTS : 3;
+	$emails       = $wpdb->get_results(
 		$wpdb->prepare(
+			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 			"SELECT * FROM $table_name
          WHERE status = 'pending'
          AND scheduled_time <= %s
-         AND attempts < 3
+         AND attempts < %d
          ORDER BY priority DESC, scheduled_time ASC, id ASC
          LIMIT %d",
 			$current_time,
+			$max_attempts,
 			$limit
 		)
 	);
@@ -167,10 +194,17 @@ function certificate_generator_update_queue_status( $queue_id, $status, $error_m
 		$format[]              = '%s';
 	}
 
-	// Increment attempts if sending or failed
-	if ( in_array( $status, array( 'sending', 'failed' ) ) ) {
-		$wpdb->query(
+	// Record last attempt timestamp on any active transition.
+	if ( in_array( $status, array( 'sending', 'sent', 'failed' ), true ) ) {
+		$data['last_attempt_at'] = current_time( 'mysql' );
+		$format[]                = '%s';
+	}
+
+	// Increment attempts if sending or failed.
+	if ( in_array( $status, array( 'sending', 'failed' ), true ) ) {
+		$wpdb->query( // phpcs:ignore WordPress.DB.DirectDatabaseQuery
 			$wpdb->prepare(
+				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 				"UPDATE $table_name SET attempts = attempts + 1 WHERE id = %d",
 				$queue_id
 			)
@@ -320,14 +354,14 @@ function certificate_generator_bulk_queue_emails( $post_type = '', $cg_ids = arr
         // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 		$rows = $wpdb->get_results(
 			$wpdb->prepare(
-				"SELECT id, email, student_name FROM $cg_table WHERE email != '' AND id IN ($placeholders) ORDER BY id ASC",
+				"SELECT id, email FROM $cg_table WHERE email != '' AND id IN ($placeholders) ORDER BY id ASC",
 				array_map( 'intval', $cg_ids )
 			),
 			ARRAY_A
 		);
 	} else {
 		$rows = $wpdb->get_results(
-			"SELECT id, email, student_name FROM $cg_table WHERE email != '' ORDER BY id ASC",
+			"SELECT id, email FROM $cg_table WHERE email != '' ORDER BY id ASC",
 			ARRAY_A
 		);
 	}

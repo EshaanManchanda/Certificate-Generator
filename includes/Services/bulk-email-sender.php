@@ -41,6 +41,8 @@ function certificate_generator_add_cron_schedules( $schedules ) {
  * @return array Results
  */
 function certificate_generator_process_queue_batch() {
+	global $wpdb;
+
 	$results = array(
 		'processed' => 0,
 		'sent'      => 0,
@@ -49,73 +51,86 @@ function certificate_generator_process_queue_batch() {
 		'errors'    => array(),
 	);
 
-	// Check if rate limiting allows sending
-	$rate_check = certificate_generator_can_send_email();
-
-	if ( ! $rate_check['can_send'] ) {
-		error_log( "Certificate Generator: Queue processing skipped - {$rate_check['reason']}. Wait: {$rate_check['wait_seconds']}s" );
+	// Run-lock: prevent cron + inline trigger + concurrent request from double-processing.
+	if ( get_transient( 'cg_queue_lock' ) ) {
 		return $results;
 	}
+	set_transient( 'cg_queue_lock', 1, 60 );
 
-	// Get batch size from config
-	$config     = certificate_generator_get_rate_limit_config();
-	$batch_size = $config['batch_size'];
+	try {
+		// Stale-row reclaim: rows stuck in 'sending' longer than CG_QUEUE_STALE_MINUTES
+		// are reset to 'pending' with attempts incremented so they eventually land on 'failed'.
+		$stale_minutes = defined( 'CG_QUEUE_STALE_MINUTES' ) ? (int) CG_QUEUE_STALE_MINUTES : 10;
+		$max_attempts  = defined( 'CG_QUEUE_MAX_ATTEMPTS' )  ? (int) CG_QUEUE_MAX_ATTEMPTS  : 3;
+		$queue_table   = $wpdb->prefix . 'cert_email_queue';
 
-	// Get next batch from queue
-	$emails = certificate_generator_get_next_batch( $batch_size );
-
-	if ( empty( $emails ) ) {
-		// No emails to process
-		return $results;
-	}
-
-	if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
-		error_log( 'Certificate Generator: Processing batch of ' . count( $emails ) . ' emails' );
-	}
-
-	foreach ( $emails as $queue_item ) {
-		++$results['processed'];
-
-		$rate_check = certificate_generator_can_send_email();
-		if ( ! $rate_check['can_send'] ) {
-			error_log( "Certificate Generator: Rate limit reached mid-batch. Stopping. Wait: {$rate_check['wait_seconds']}s" );
-			break;
-		}
-
-		certificate_generator_update_queue_status( $queue_item->id, 'sending' );
-
-		$sent = certificate_generator_send_email( $queue_item->certificate_id, true );
-
-		if ( $sent ) {
-			certificate_generator_update_queue_status( $queue_item->id, 'sent' );
-			++$results['sent'];
-		} else {
-			$error_msg = 'Failed to send certificate email';
-			if ( $queue_item->attempts + 1 >= 3 ) {
-				certificate_generator_update_queue_status( $queue_item->id, 'failed', $error_msg );
-				error_log( "Certificate Generator: Queue item {$queue_item->id} permanently failed after 3 attempts (cert_id: {$queue_item->certificate_id})" );
-			} else {
-				certificate_generator_update_queue_status( $queue_item->id, 'pending', $error_msg );
-				if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
-					error_log( "Certificate Generator: Queue item {$queue_item->id} failed attempt {$queue_item->attempts}, will retry" );
-				}
-			}
-			++$results['failed'];
-			$results['errors'][] = "Certificate {$queue_item->certificate_id}: $error_msg";
-		}
-
-		sleep( 2 );
-	}
-
-	if ( defined( 'WP_DEBUG' ) && WP_DEBUG && $results['processed'] > 0 ) {
-		error_log(
-			sprintf(
-				'Certificate Generator: Batch complete — processed: %d, sent: %d, failed: %d',
-				$results['processed'],
-				$results['sent'],
-				$results['failed']
+		$wpdb->query( // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+			$wpdb->prepare(
+				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+				"UPDATE $queue_table
+				 SET status = CASE WHEN attempts + 1 >= %d THEN 'failed' ELSE 'pending' END,
+				     attempts = attempts + 1,
+				     error_message = 'reclaimed: stale sending'
+				 WHERE status = 'sending'
+				   AND attempts < %d
+				   AND updated_at < DATE_SUB(NOW(), INTERVAL %d MINUTE)",
+				$max_attempts,
+				$max_attempts,
+				$stale_minutes
 			)
 		);
+
+		// Check if rate limiting allows sending.
+		$rate_check = certificate_generator_can_send_email();
+		if ( ! $rate_check['can_send'] ) {
+			return $results;
+		}
+
+		$batch_size = defined( 'CG_QUEUE_BATCH_SIZE' ) ? (int) CG_QUEUE_BATCH_SIZE : 50;
+		$emails     = certificate_generator_get_next_batch( $batch_size );
+
+		if ( empty( $emails ) ) {
+			return $results;
+		}
+
+		$start = microtime( true );
+		$budget = defined( 'CG_QUEUE_RUNTIME_BUDGET' ) ? (int) CG_QUEUE_RUNTIME_BUDGET : 20;
+
+		foreach ( $emails as $queue_item ) {
+			// Runtime budget: stop before PHP timeout so cron can resume next tick.
+			if ( microtime( true ) - $start > $budget ) {
+				break;
+			}
+
+			++$results['processed'];
+
+			$rate_check = certificate_generator_can_send_email();
+			if ( ! $rate_check['can_send'] ) {
+				break;
+			}
+
+			certificate_generator_update_queue_status( $queue_item->id, 'sending' );
+
+			$sent = certificate_generator_send_email( $queue_item->certificate_id, true );
+
+			if ( $sent ) {
+				certificate_generator_update_queue_status( $queue_item->id, 'sent' );
+				++$results['sent'];
+			} else {
+				$error_msg = 'Failed to send certificate email';
+				if ( $queue_item->attempts + 1 >= $max_attempts ) {
+					certificate_generator_update_queue_status( $queue_item->id, 'failed', $error_msg );
+				} else {
+					certificate_generator_update_queue_status( $queue_item->id, 'pending', $error_msg );
+				}
+				++$results['failed'];
+				$results['errors'][] = "Certificate {$queue_item->certificate_id}: $error_msg";
+			}
+
+			sleep( 2 );
+		}
+	} finally {
+		delete_transient( 'cg_queue_lock' );
 	}
 
 	return $results;

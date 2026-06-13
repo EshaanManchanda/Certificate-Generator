@@ -192,14 +192,16 @@ function cg_email_get_sql_row( int $post_id, string $post_type ): ?array {
 }
 
 /**
+ * Create ZIP file containing multiple certificates for an email address.
  *
- * Create ZIP file containing multiple certificates for an email address
+ * @param array  $certificates_data Array of ['path', 'filename'] descriptors.
+ * @param string $recipient_email   Recipient email address for ZIP filename.
+ * @return array|false Array with 'zip_path', 'zip_url', 'certificate_count' on success, false on failure.
  *
- * @param array  $certificates_data Array of certificate data with 'path', 'filename', and 'post_id' keys
- * @param string $recipient_email Recipient email address for ZIP filename
- * @return array|false Array with 'zip_path', 'zip_url', 'certificate_count' on success, false on failure
+ * @internal Renamed from certificate_generator_create_zip_for_email in v8 Phase 2.
+ *           Call certificate_generator_create_zip_for_email() or ZipService::make() instead.
  */
-function certificate_generator_create_zip_for_email( $certificates_data, $recipient_email ) {
+function _cg_create_zip_impl( $certificates_data, $recipient_email ) {
 	// Validate inputs
 	if ( empty( $certificates_data ) || ! is_array( $certificates_data ) ) {
 		error_log( 'Certificate Generator: Cannot create ZIP - no certificate data provided' );
@@ -287,6 +289,20 @@ function certificate_generator_create_zip_for_email( $certificates_data, $recipi
 		'failed_count'      => count( $failed_files ),
 		'failed_files'      => $failed_files,
 	);
+}
+
+// ── Public shim for certificate_generator_create_zip_for_email ───────────────
+// When CG_USE_NEW_ZIP=true, legacy-shims.php provides this function and routes
+// it through ZipService::make(). When the flag is off (default), this wrapper
+// keeps all callers working unchanged.
+if ( ! class_exists( '\CertificateGenerator\Core\Config' )
+	|| ! \CertificateGenerator\Core\Config::flag( 'CG_USE_NEW_ZIP' ) ) {
+	/**
+	 * @deprecated v8 Use \CertificateGenerator\Services\ZipService::make() instead.
+	 */
+	function certificate_generator_create_zip_for_email( $certificates_data, $recipient_email ) {
+		return _cg_create_zip_impl( $certificates_data, $recipient_email );
+	}
 }
 
 /**

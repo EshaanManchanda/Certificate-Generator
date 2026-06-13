@@ -56,20 +56,25 @@ if ( class_exists( '\CertificateGenerator\Core\Config' )
 }
 
 // ── Phase 2: ZIP shims ────────────────────────────────────────────────────────
-/*
- * @deprecated v8 Use \CertificateGenerator\Services\ZipService instead.
- * Uncomment block when CG_USE_NEW_ZIP is ready (Phase 2).
- *
-if ( \CertificateGenerator\Core\Config::flag( 'CG_USE_NEW_ZIP' )
-    && ! function_exists( '_cg_zip_shim_active' ) ) {
+// When CG_USE_NEW_ZIP=true, Email/functions.php skips defining the public
+// wrapper and this block provides it, routing through ZipService.
+// When CG_USE_NEW_ZIP=false (default), Email/functions.php provides the wrapper
+// directly and this block is skipped.
 
-    function _cg_zip_shim_active() {}
+if ( class_exists( '\CertificateGenerator\Core\Config' )
+	&& \CertificateGenerator\Core\Config::flag( 'CG_USE_NEW_ZIP' )
+	&& ! function_exists( 'certificate_generator_create_zip_for_email' ) ) {
 
-    function cg_build_certificate_zip( $cg_id ) {
-        return \CertificateGenerator\Services\ZipService::forEmail( $cg_id );
-    }
+	/**
+	 * @deprecated v8 Use \CertificateGenerator\Services\ZipService::make() instead.
+	 */
+	function certificate_generator_create_zip_for_email( $certificates_data, $recipient_email ) {
+		return \CertificateGenerator\Services\ZipService::make(
+			(array) $certificates_data,
+			(string) $recipient_email
+		);
+	}
 }
-*/
 
 // ── Phase 4: Email shims ─────────────────────────────────────────────────────
 // certificate_generator_send_email() is already delegated from
@@ -77,5 +82,5 @@ if ( \CertificateGenerator\Core\Config::flag( 'CG_USE_NEW_ZIP' )
 // is flipped in Phase 4, the send funnel fires do_action('cg_email_sent').
 // No shim override needed here — EmailService is the shim.
 
-// ── Phase 1 complete — PDF shims active above ─────────────────────────────────
-// Phases 2–4 shims will be added below as each phase completes.
+// ── Phases 1–2 complete — PDF + ZIP shims active above ────────────────────────
+// Phases 3–4 shims will be added below as each phase completes.

@@ -39,6 +39,64 @@ class Config {
 	public const CAPABILITY_MANAGE     = 'manage_options';
 	public const CAPABILITY_EDIT_POSTS = 'edit_posts';
 
+	// ── Queue processing (mirrors defines in certificate-generator.php) ──────────
+	public const QUEUE_BATCH_SIZE    = 50;
+	public const QUEUE_STALE_MINUTES = 10;
+	public const QUEUE_MAX_ATTEMPTS  = 3;
+	public const QUEUE_RUNTIME_BUDGET = 20; // seconds
+
+	// ── v8 feature flags (default OFF; flip via wp-config define to enable) ──────
+	//    CG_USE_NEW_PDF        — route generate_certificate_pdf* through PdfGenerator
+	//    CG_USE_NEW_ZIP        — route cg_build_certificate_zip through ZipService
+	//    CG_USE_REPOSITORIES   — route DB reads/writes through Repository layer
+	//    CG_USE_DTO            — wrap CertificateData/EmailData value objects
+	//    CG_USE_EVENTS         — fire do_action('cg_email_sent') + listeners
+	// ── debug flags (default OFF; flip via wp-config to enable profiling) ─────────
+	//    CG_DEBUG_PDF_TIME     — log PDF generation time to uploads/cg-debug/
+	//    CG_DEBUG_QUERY_TIME   — log repository query counts/times
+	//    CG_DEBUG_SERVICES     — log service dispatch trace
+
+	/**
+	 * Check whether a v8 feature flag or debug flag is enabled.
+	 *
+	 * Flags default to OFF. Enable by adding e.g.:
+	 *   define( 'CG_USE_NEW_PDF', true );
+	 * in wp-config.php or at the top of certificate-generator.php.
+	 *
+	 * @param string $name  Flag constant name, e.g. 'CG_USE_NEW_PDF'.
+	 */
+	public static function flag( string $name ): bool {
+		return defined( $name ) && (bool) constant( $name );
+	}
+
+	/**
+	 * Queue batch size — prefers runtime define, falls back to class constant.
+	 */
+	public static function queueBatchSize(): int {
+		return defined( 'CG_QUEUE_BATCH_SIZE' ) ? (int) CG_QUEUE_BATCH_SIZE : self::QUEUE_BATCH_SIZE;
+	}
+
+	/**
+	 * Minutes before a 'sending' row is reclaimed as stale.
+	 */
+	public static function queueStaleMinutes(): int {
+		return defined( 'CG_QUEUE_STALE_MINUTES' ) ? (int) CG_QUEUE_STALE_MINUTES : self::QUEUE_STALE_MINUTES;
+	}
+
+	/**
+	 * Maximum send attempts before a queue row is marked 'failed'.
+	 */
+	public static function maxAttempts(): int {
+		return defined( 'CG_QUEUE_MAX_ATTEMPTS' ) ? (int) CG_QUEUE_MAX_ATTEMPTS : self::QUEUE_MAX_ATTEMPTS;
+	}
+
+	/**
+	 * Max seconds a single batch run may spend before breaking to let cron resume.
+	 */
+	public static function runtimeBudget(): int {
+		return defined( 'CG_QUEUE_RUNTIME_BUDGET' ) ? (int) CG_QUEUE_RUNTIME_BUDGET : self::QUEUE_RUNTIME_BUDGET;
+	}
+
 	public static function get( string $key, $default = null ) {
 		$constants = array(
 			'version'             => self::VERSION,

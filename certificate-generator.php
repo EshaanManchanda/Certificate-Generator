@@ -120,6 +120,7 @@ $optional_files = [
     'includes/Email/queue.php' => 'Email queue system',
     'includes/Email/rate-limiter.php' => 'Email rate limiter',
     'includes/Services/bulk-email-sender.php' => 'Bulk email sender',
+    'includes/legacy-shims.php' => 'v8 anti-corruption shims (frozen, @deprecated v8)',
     'includes/Admin/bulk-email.php' => 'Bulk email admin page',
     'includes/Admin/filters-api.php' => 'Admin filters API',
     'includes/Admin/integration-dashboard.php' => 'Integration health dashboard widget',

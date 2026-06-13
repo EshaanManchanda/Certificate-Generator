@@ -30,6 +30,13 @@ class EmailStatusService {
 	 * @return array<string, array{status:string, last_error:string, attempts:int}>
 	 *         Keyed by email address.
 	 */
+	/**
+	 * Object-cache group for per-email badge entries.
+	 * Invalidated by InvalidateStatusCacheListener on cg_email_sent.
+	 */
+	private const CACHE_GROUP = 'cg_email_status';
+	private const CACHE_TTL   = 300; // 5 minutes
+
 	public static function getBadgeStatuses( array $emails ): array {
 		$emails = array_values( array_unique( array_filter( $emails ) ) );
 		if ( empty( $emails ) ) {
@@ -41,57 +48,81 @@ class EmailStatusService {
 			array( 'status' => self::STATUS_NOT_SENT, 'last_error' => '', 'attempts' => 0 )
 		);
 
-		if ( Config::flag( 'CG_USE_REPOSITORIES' ) ) {
-			[ $log_latest, $queue_latest ] = self::fetch_via_repos( $emails );
-		} else {
-			[ $log_latest, $queue_latest ] = self::fetch_via_wpdb( $emails );
+		// ── Object cache layer (only when event system is active) ────────────────
+		$use_cache = Config::flag( 'CG_USE_EVENTS' );
+		$misses    = $emails; // default: fetch all
+
+		if ( $use_cache ) {
+			$misses = array();
+			foreach ( $emails as $email ) {
+				$cached = wp_cache_get( strtolower( $email ), self::CACHE_GROUP );
+				if ( $cached !== false ) {
+					$result[ $email ] = $cached;
+				} else {
+					$misses[] = $email;
+				}
+			}
+			if ( empty( $misses ) ) {
+				return $result;
+			}
 		}
 
-		foreach ( $emails as $email ) {
+		if ( Config::flag( 'CG_USE_REPOSITORIES' ) ) {
+			[ $log_latest, $queue_latest ] = self::fetch_via_repos( $misses );
+		} else {
+			[ $log_latest, $queue_latest ] = self::fetch_via_wpdb( $misses );
+		}
+
+		foreach ( $misses as $email ) {
 			$log   = $log_latest[ $email ]   ?? null;
 			$queue = $queue_latest[ $email ] ?? null;
 
 			if ( ! $log && ! $queue ) {
-				continue;
+				// Keep default NotSent; still cache it so we don't re-query.
+			} else {
+				$log_ts   = $log   ? (int) strtotime( $log['created_at'] )   : 0;
+				$queue_ts = $queue ? (int) strtotime( $queue['updated_at'] ) : 0;
+				$use_q    = $queue_ts >= $log_ts;
+
+				if ( $use_q && $queue ) {
+					switch ( $queue['status'] ) {
+						case 'sent':
+							$result[ $email ]['status'] = self::STATUS_SENT;
+							break;
+						case 'failed':
+							$result[ $email ]['status']     = self::STATUS_FAILED;
+							$result[ $email ]['last_error'] = $queue['error_message'] ?? '';
+							$result[ $email ]['attempts']   = (int) ( $queue['attempts'] ?? 0 );
+							break;
+						case 'sending':
+							$result[ $email ]['status'] = self::STATUS_SENDING;
+							break;
+						default:
+							$result[ $email ]['status'] = self::STATUS_QUEUED;
+							break;
+					}
+				} elseif ( $log ) {
+					switch ( $log['status'] ) {
+						case 'sent':
+							$result[ $email ]['status'] = self::STATUS_SENT;
+							break;
+						case 'failed':
+						case 'bounced':
+							$result[ $email ]['status']     = self::STATUS_FAILED;
+							$result[ $email ]['last_error'] = $log['error_message'] ?? '';
+							break;
+						case 'queued':
+							$result[ $email ]['status'] = self::STATUS_QUEUED;
+							break;
+						default:
+							break;
+					}
+				}
 			}
 
-			$log_ts   = $log   ? (int) strtotime( $log['created_at'] )   : 0;
-			$queue_ts = $queue ? (int) strtotime( $queue['updated_at'] ) : 0;
-			$use_q    = $queue_ts >= $log_ts;
-
-			if ( $use_q && $queue ) {
-				switch ( $queue['status'] ) {
-					case 'sent':
-						$result[ $email ]['status'] = self::STATUS_SENT;
-						break;
-					case 'failed':
-						$result[ $email ]['status']     = self::STATUS_FAILED;
-						$result[ $email ]['last_error'] = $queue['error_message'] ?? '';
-						$result[ $email ]['attempts']   = (int) ( $queue['attempts'] ?? 0 );
-						break;
-					case 'sending':
-						$result[ $email ]['status'] = self::STATUS_SENDING;
-						break;
-					default:
-						$result[ $email ]['status'] = self::STATUS_QUEUED;
-						break;
-				}
-			} elseif ( $log ) {
-				switch ( $log['status'] ) {
-					case 'sent':
-						$result[ $email ]['status'] = self::STATUS_SENT;
-						break;
-					case 'failed':
-					case 'bounced':
-						$result[ $email ]['status']     = self::STATUS_FAILED;
-						$result[ $email ]['last_error'] = $log['error_message'] ?? '';
-						break;
-					case 'queued':
-						$result[ $email ]['status'] = self::STATUS_QUEUED;
-						break;
-					default:
-						break;
-				}
+			// Populate cache for this miss so subsequent requests skip the DB.
+			if ( $use_cache ) {
+				wp_cache_set( strtolower( $email ), $result[ $email ], self::CACHE_GROUP, self::CACHE_TTL );
 			}
 		}
 

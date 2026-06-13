@@ -26,6 +26,10 @@ class Plugin {
 
 	public function boot(): void {
 		SettingsService::migrate_legacy();
+		if ( get_option( 'cg_defaults_seeded' ) !== '2' ) {
+			SettingsService::seed_defaults();
+			update_option( 'cg_defaults_seeded', '2', 'no' );
+		}
 		$this->register_services();
 		$this->register_hooks();
 	}
@@ -93,6 +97,17 @@ class Plugin {
 	private function register_hooks(): void {
 		add_action( 'init', array( $this, 'init' ) );
 		add_action( 'rest_api_init', array( $this, 'register_api_routes' ) );
+
+		if ( Config::flag( 'CG_USE_EVENTS' ) ) {
+			$log_listener   = new \CertificateGenerator\Listeners\LogEmailListener();
+			$analytics      = new \CertificateGenerator\Listeners\AnalyticsListener();
+			$cache_listener = new \CertificateGenerator\Listeners\InvalidateStatusCacheListener();
+
+			// Priority 10: log first (row must exist before analytics reads counters).
+			add_action( 'cg_email_sent', array( $log_listener,   'handle' ), 10 );
+			add_action( 'cg_email_sent', array( $analytics,      'handle' ), 20 );
+			add_action( 'cg_email_sent', array( $cache_listener, 'handle' ), 30 );
+		}
 	}
 
 	public function init(): void {
@@ -115,6 +130,12 @@ class Plugin {
 		} elseif ( class_exists( '\CG_Migrator' ) ) {
 			\CG_Migrator::run();
 		}
+
+		// Pre-create centralized certificate storage folder.
+		wp_mkdir_p( wp_upload_dir()['basedir'] . '/cg_certificates' );
+
+		// Seed default options so email works out of the box.
+		SettingsService::seed_defaults();
 
 		flush_rewrite_rules();
 	}

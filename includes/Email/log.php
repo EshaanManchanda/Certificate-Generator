@@ -163,6 +163,13 @@ function certificate_generator_log_email( $certificate_id, $recipient_email, $re
 		'error_message'    => $error_message,
 	);
 
+	// CG_USE_EVENTS: delegate write + side-effects to LogEmailListener.
+	// Log seam: listeners own the row write; legacy path unchanged when flag is off.
+	if ( \CertificateGenerator\Core\Config::flag( 'CG_USE_EVENTS' ) ) {
+		do_action( 'cg_email_sent', $data );
+		return true; // truthy; no live caller consumes the id for a follow-up write
+	}
+
 	$result = $wpdb->insert( $table_name, $data );
 
 	if ( $result && $success ) {

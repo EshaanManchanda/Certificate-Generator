@@ -44,3 +44,8 @@ if (!defined('ARRAY_A')) {
 if (!defined('OBJECT')) {
     define('OBJECT', 'OBJECT');
 }
+
+// wp_cache_* stubs are intentionally NOT defined here.
+// Brain\Monkey (Patchwork) must intercept them — if they are defined before
+// Patchwork loads, Functions\expect() throws DefinedTooEarly.
+// Tests that call these functions must stub them via Functions\when / Functions\expect.

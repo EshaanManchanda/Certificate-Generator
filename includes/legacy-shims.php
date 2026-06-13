@@ -24,35 +24,36 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 // ── Phase 1: PDF shims ────────────────────────────────────────────────────────
-// Populated in Phase 1. Until then, the functions defined in
-// includes/Services/certificate-search.php remain the live implementations.
-// This file is loaded AFTER certificate-search.php via optional_files, so these
-// overrides will take precedence once un-commented.
+// When CG_USE_NEW_PDF=true, certificate-search.php skips defining the public
+// wrappers, and this block provides them — routing through PdfGenerator.
+// When CG_USE_NEW_PDF=false (default), certificate-search.php provides the
+// functions directly and this block is skipped.
+//
+// generate_certificate_pdf_email is NOT overridden here — it already calls
+// generate_certificate_pdf() which is shimmed below, so it inherits the new path.
 
-/*
- * @deprecated v8 Use \CertificateGenerator\Services\PdfGenerator::create() instead.
- * Uncomment block when CG_USE_NEW_PDF is ready (Phase 1).
- *
-if ( \CertificateGenerator\Core\Config::flag( 'CG_USE_NEW_PDF' )
-    && ! function_exists( '_cg_pdf_shim_active' ) ) {
+if ( class_exists( '\CertificateGenerator\Core\Config' )
+	&& \CertificateGenerator\Core\Config::flag( 'CG_USE_NEW_PDF' )
+	&& ! function_exists( 'generate_certificate_pdf' ) ) {
 
-    function _cg_pdf_shim_active() {} // sentinel
+	/**
+	 * @deprecated v8 Use \CertificateGenerator\Services\PdfGenerator::make() instead.
+	 */
+	function generate_certificate_pdf( $post_id, $fields = array(), $student_data = null ) {
+		return \CertificateGenerator\Services\PdfGenerator::make(
+			(int) $post_id,
+			(array) $fields,
+			is_array( $student_data ) ? $student_data : null
+		);
+	}
 
-    function generate_certificate_pdf( $post_id, $fields = array(), $student_data = null ) {
-        return \CertificateGenerator\Services\PdfGenerator::create(
-            \CertificateGenerator\Services\PdfGenerator::resolve( $post_id, $fields, $student_data )
-        );
-    }
-
-    function generate_certificate_pdf_with_data( $post_data ) {
-        return \CertificateGenerator\Services\PdfGenerator::createFromArray( $post_data );
-    }
-
-    function generate_certificate_pdf_email( $post_id, $fields, $email_options = null ) {
-        return generate_certificate_pdf( $post_id, $fields ); // same path in v8
-    }
+	/**
+	 * @deprecated v8 Use \CertificateGenerator\Services\PdfGenerator::makeFromArray() instead.
+	 */
+	function generate_certificate_pdf_with_data( $post_data ) {
+		return \CertificateGenerator\Services\PdfGenerator::makeFromArray( (array) $post_data );
+	}
 }
-*/
 
 // ── Phase 2: ZIP shims ────────────────────────────────────────────────────────
 /*
@@ -76,5 +77,5 @@ if ( \CertificateGenerator\Core\Config::flag( 'CG_USE_NEW_ZIP' )
 // is flipped in Phase 4, the send funnel fires do_action('cg_email_sent').
 // No shim override needed here — EmailService is the shim.
 
-// ── Placeholder (remove this comment when first shim block is un-commented) ──
-// This file intentionally contains only comments until Phase 1 ships.
+// ── Phase 1 complete — PDF shims active above ─────────────────────────────────
+// Phases 2–4 shims will be added below as each phase completes.

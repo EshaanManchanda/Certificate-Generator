@@ -390,6 +390,49 @@ function cg_add_debug_field_boundary( $pdf, $field_x, $field_y, $field_width, $f
 }
 
 /**
+ * Absolute path to the cg_certificates upload folder. Created on first call if missing.
+ */
+function cg_certificates_dir(): string {
+	$dir = wp_upload_dir()['basedir'] . '/cg_certificates';
+	if ( ! file_exists( $dir ) ) {
+		wp_mkdir_p( $dir );
+	}
+	return $dir;
+}
+
+/**
+ * Public URL to the cg_certificates upload folder.
+ */
+function cg_certificates_url(): string {
+	return wp_upload_dir()['baseurl'] . '/cg_certificates';
+}
+
+/**
+ * Canonical PDF download filename: {StudentName}_{CertType}_{UniqueId}_certificate.pdf
+ * Use this everywhere a certificate file needs a human-readable name (ZIP entries, downloads).
+ * Do NOT use for the stored/canonical pdf_path on disk — that uses certificate_{post_id}.pdf.
+ */
+function cg_certificate_pdf_filename( string $student_name, string $cert_type, string $unique_id = '' ): string {
+	$parts = array_filter( array(
+		sanitize_file_name( $student_name ),
+		sanitize_file_name( $cert_type ),
+		$unique_id,
+	) );
+	return implode( '_', $parts ) . '_certificate.pdf';
+}
+
+/**
+ * Canonical ZIP filename: certificates_{RecipientSlug}_{Timestamp}.zip
+ * Use this everywhere multiple certificates are bundled into a ZIP.
+ */
+function cg_certificate_zip_filename( string $recipient = '', int $timestamp = 0 ): string {
+	$slug = $recipient
+		? trim( preg_replace( '/[^a-z0-9]+/', '_', strtolower( $recipient ) ), '_' )
+		: 'bulk';
+	return 'certificates_' . $slug . '_' . ( $timestamp ?: (int) current_time( 'timestamp' ) ) . '.zip';
+}
+
+/**
  * Find a fallback template when exact match fails.
  * Looks for any template with partial match on certificate type.
  */
@@ -436,6 +479,237 @@ function cg_find_fallback_template( $certificate_type ) {
 	}
 
 	return null;
+}
+
+/**
+ * Check whether a known student (in wp_cg_students) has a cert that is pending/scheduled.
+ *
+ * Returns null  — email unknown (unknown-email path should stay as-is).
+ * Returns array — email known but no published cert yet:
+ *   [
+ *     'students'   => [...rows...],
+ *     'state'      => 'scheduled'|'draft'|'none',
+ *     'event_date' => 'Y-m-d'|null,
+ *   ]
+ */
+function cg_get_pending_certificate_info( $email ) {
+	if ( ! class_exists( '\CertificateGenerator\Database\CustomTables' ) ) {
+		return null;
+	}
+
+	$tables    = \CertificateGenerator\Database\CustomTables::instance();
+	$stu_table = $tables->get_table( 'students' );
+	$tpl_table = $tables->get_table( 'certificate_templates' );
+
+	$stu_exists = $GLOBALS['wpdb']->get_var(
+		$GLOBALS['wpdb']->prepare( 'SHOW TABLES LIKE %s', $stu_table )
+	) === $stu_table;
+
+	if ( ! $stu_exists ) {
+		return null;
+	}
+
+	$students = $GLOBALS['wpdb']->get_results(
+		$GLOBALS['wpdb']->prepare( "SELECT * FROM $stu_table WHERE email = %s", $email ),
+		ARRAY_A
+	);
+
+	if ( empty( $students ) ) {
+		return null;
+	}
+
+	$tpl_exists = $GLOBALS['wpdb']->get_var(
+		$GLOBALS['wpdb']->prepare( 'SHOW TABLES LIKE %s', $tpl_table )
+	) === $tpl_table;
+
+	if ( ! $tpl_exists ) {
+		return array( 'students' => $students, 'state' => 'none', 'event_date' => null );
+	}
+
+	$state      = 'none';
+	$event_date = null;
+
+	foreach ( $students as $student ) {
+		$cert_type = trim( $student['certificate_type'] ?? '' );
+		if ( $cert_type === '' ) {
+			continue;
+		}
+
+		// Exact match first, then case-insensitive scan.
+		$rows = $GLOBALS['wpdb']->get_results(
+			$GLOBALS['wpdb']->prepare(
+				"SELECT status, event_date FROM $tpl_table
+				  WHERE certificate_type = %s
+				    AND status IN ('scheduled','draft')
+				  ORDER BY status ASC, event_date ASC",
+				$cert_type
+			),
+			ARRAY_A
+		);
+
+		if ( empty( $rows ) ) {
+			// Case-insensitive fallback.
+			$all_pending = $GLOBALS['wpdb']->get_results(
+				"SELECT status, event_date, certificate_type FROM $tpl_table
+				  WHERE status IN ('scheduled','draft')",
+				ARRAY_A
+			);
+			foreach ( $all_pending as $r ) {
+				if ( strtolower( trim( $r['certificate_type'] ) ) === strtolower( $cert_type ) ) {
+					$rows[] = $r;
+				}
+			}
+		}
+
+		foreach ( $rows as $r ) {
+			$row_state = $r['status'];
+			$row_date  = ( ! empty( $r['event_date'] ) && $r['event_date'] !== '0000-00-00' ) ? $r['event_date'] : null;
+
+			// Prefer 'scheduled' over 'draft'.
+			if ( $state !== 'scheduled' && $row_state === 'scheduled' ) {
+				$state      = 'scheduled';
+				$event_date = $row_date;
+			} elseif ( $state === 'scheduled' && $row_state === 'scheduled' && $row_date !== null ) {
+				// Keep earliest scheduled date.
+				if ( $event_date === null || strtotime( $row_date ) < strtotime( $event_date ) ) {
+					$event_date = $row_date;
+				}
+			} elseif ( $state === 'none' && $row_state === 'draft' ) {
+				$state = 'draft';
+			}
+		}
+	}
+
+	return array( 'students' => $students, 'state' => $state, 'event_date' => $event_date );
+}
+
+/**
+ * Render the "certificate not ready yet" card for students whose cert is pending.
+ */
+function cg_render_pending_certificate_screen( array $pending ): string {
+	$options       = get_option( 'certificate_generator_settings_email' );
+	$title_color   = $options['title_color'] ?? '#2c3e50';
+	$text_color    = $options['text_color'] ?? '#7f8c8d';
+	$btn_start     = $options['btn_start'] ?? '#3498db';
+	$btn_end       = $options['btn_end'] ?? '#2980b9';
+	$border_radius = $options['border_radius'] ?? '12';
+
+	$state      = $pending['state'] ?? 'none';
+	$event_date = $pending['event_date'] ?? null;
+
+	// Build body copy based on state.
+	if ( $state === 'scheduled' && $event_date !== null ) {
+		$today = current_time( 'Y-m-d' );
+		if ( $event_date > $today ) {
+			$human    = date_i18n( get_option( 'date_format' ), strtotime( $event_date ) );
+			$body_html = '<p style="color: ' . $text_color . '; margin-bottom: 15px; line-height: 1.6; font-size: 16px;">'
+				. esc_html__( 'We found your registration, but your certificate is not live yet.', 'certificate-generator' )
+				. '</p>'
+				. '<p style="color: ' . $text_color . '; margin-bottom: 30px; line-height: 1.6; font-size: 16px;">'
+				. '<strong>' . esc_html__( 'Expected availability:', 'certificate-generator' ) . '</strong> '
+				. esc_html( $human ) . '</p>';
+		} else {
+			$body_html = '<p style="color: ' . $text_color . '; margin-bottom: 30px; line-height: 1.6; font-size: 16px;">'
+				. esc_html__( 'We found your registration. Your certificate is being published — please check back shortly.', 'certificate-generator' )
+				. '</p>';
+		}
+	} else {
+		$body_html = '<p style="color: ' . $text_color . '; margin-bottom: 30px; line-height: 1.6; font-size: 16px;">'
+			. esc_html__( 'We found your registration, but your certificate is still being prepared. Please check back soon.', 'certificate-generator' )
+			. '</p>';
+	}
+
+	$output  = '<div class="certificate-not-found" style="max-width: 600px; margin: 40px auto; font-family: -apple-system, BlinkMacSystemFont, \'Segoe UI\', Roboto, Oxygen-Sans, Ubuntu, Cantarell, \'Helvetica Neue\', sans-serif;">';
+	$output .= '<div style="padding: 40px; background: #ffffff; border-radius: ' . $border_radius . 'px; '
+		. 'box-shadow: 0 10px 40px rgba(0, 0, 0, 0.08); text-align: center;">';
+
+	// Clock icon.
+	$output .= '<div style="margin-bottom: 25px; animation: pulse 2s infinite;">'
+		. '<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80" viewBox="0 0 24 24" fill="none" '
+		. 'stroke="' . $btn_start . '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
+		. '<circle cx="12" cy="12" r="10"></circle>'
+		. '<polyline points="12 6 12 12 16 14"></polyline>'
+		. '</svg></div>';
+
+	$output .= '<h2 style="color: ' . $title_color . '; font-size: 28px; margin: 0 0 15px; font-weight: 700;">'
+		. esc_html__( 'Your Certificate Isn\'t Ready Yet', 'certificate-generator' ) . '</h2>';
+
+	$output .= $body_html;
+
+	// Contact-info instructions block (mirrors not-found screen lines 3410–3424).
+	$output .= '<p style="color: ' . $text_color . '; margin-bottom: 20px; line-height: 1.6;">'
+		. esc_html__( 'If you are unable to find your certificate here, please drop a request email to us on:', 'certificate-generator' ) . ' '
+		. certificate_generator_get_contact_email() . ' '
+		. esc_html__( 'to resend it over your email.', 'certificate-generator' ) . '</p>
+        <div style="margin-bottom: 20px;">
+          <p style="font-weight: bold; margin: 0 0 8px; color: ' . $title_color . '; font-size: 16px;">'
+		. esc_html__( 'Please include following details in your email:', 'certificate-generator' ) . '</p>
+          <ul style="margin: 0; padding-left: 20px; list-style-type: disc; color: ' . $text_color . ';">
+            <li style="margin-bottom: 8px;">' . esc_html__( 'Registered Email Id', 'certificate-generator' ) . '</li>
+            <li style="margin-bottom: 8px;">' . esc_html__( 'Name', 'certificate-generator' ) . '</li>
+            <li style="margin-bottom: 8px;">' . esc_html__( 'Parent Name', 'certificate-generator' ) . '</li>
+            <li style="margin-bottom: 8px;">' . esc_html__( 'School', 'certificate-generator' ) . '</li>
+            <li style="margin-bottom: 0;">' . esc_html__( 'Grade', 'certificate-generator' ) . '</li>
+          </ul>
+        </div>';
+
+	// Support section.
+	$output .= '<div style="background: linear-gradient(to right, rgba(' . hex2rgb_str( $btn_start ) . ', 0.05), '
+		. 'rgba(' . hex2rgb_str( $btn_end ) . ', 0.05)); border-radius: ' . $border_radius . 'px; '
+		. 'padding: 25px; margin: 25px 0; border-left: 4px solid ' . $btn_start . ';">';
+	$output .= '<div style="display: flex; align-items: center; justify-content: center; margin-bottom: 15px;">'
+		. '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" '
+		. 'stroke="' . $btn_start . '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" '
+		. 'style="margin-right: 10px;">'
+		. '<path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path>'
+		. '</svg>'
+		. '<h3 style="color: ' . $title_color . '; margin: 0; font-size: 18px;">'
+		. esc_html__( 'Need Help Finding Your Certificate?', 'certificate-generator' ) . '</h3></div>';
+	$output .= '<p style="color: ' . $text_color . '; margin-bottom: 20px; line-height: 1.6;">'
+		. esc_html__( 'If you believe this is an error or need assistance, please contact our support team.', 'certificate-generator' ) . '</p>';
+	$output .= '<a href="mailto:' . certificate_generator_get_contact_email() . '" '
+		. 'style="display: inline-flex; align-items: center; padding: 12px 24px; '
+		. 'background: linear-gradient(135deg, ' . $btn_start . ', ' . $btn_end . '); '
+		. 'color: white; text-decoration: none; border-radius: ' . $border_radius . 'px; '
+		. 'font-weight: 600; transition: all 0.3s ease; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);" '
+		. 'onmouseover="this.style.transform=\'translateY(-2px)\'; '
+		. 'this.style.boxShadow=\'0 8px 20px rgba(0, 0, 0, 0.15)\'" '
+		. 'onmouseout="this.style.transform=\'translateY(0)\'; '
+		. 'this.style.boxShadow=\'0 4px 15px rgba(0, 0, 0, 0.1)\'">'
+		. '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" '
+		. 'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" '
+		. 'stroke-linejoin="round" style="margin-right: 8px;">'
+		. '<path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>'
+		. '<polyline points="22,6 12,13 2,6"></polyline>'
+		. '</svg>' . esc_html__( 'Contact Support', 'certificate-generator' ) . '</a>';
+	$output .= '</div>';
+
+	// Back button.
+	$output .= '<a href="' . esc_url( remove_query_arg( 'student_email' ) ) . '" '
+		. 'style="display: inline-flex; align-items: center; margin-top: 10px; '
+		. 'color: ' . $text_color . '; text-decoration: none; font-weight: 500; transition: color 0.3s ease;" '
+		. 'onmouseover="this.style.color=\'' . $btn_start . '\'" '
+		. 'onmouseout="this.style.color=\'' . $text_color . '\'">'
+		. '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" '
+		. 'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" '
+		. 'stroke-linejoin="round" style="margin-right: 6px;">'
+		. '<line x1="19" y1="12" x2="5" y2="12"></line>'
+		. '<polyline points="12 19 5 12 12 5"></polyline>'
+		. '</svg>' . esc_html__( 'Back to Search', 'certificate-generator' ) . '</a>';
+
+	$output .= '</div>'; // End card.
+
+	$output .= '<style>
+        @keyframes pulse {
+            0% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.05); opacity: 0.8; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+    </style>';
+
+	$output .= '</div>'; // End container.
+
+	return $output;
 }
 
 /**
@@ -495,8 +769,7 @@ function cg_select_certificate_template( $certificate_type, $issue_date_iso = ''
 			}
 
 			if ( empty( $candidates ) ) {
-				// Fall back to CPT
-				return cg_select_certificate_template_from_cpt( $certificate_type, $issue_date_iso, $strict );
+				return null;
 			}
 
 			// Single template — return it
@@ -552,162 +825,17 @@ function cg_select_certificate_template( $certificate_type, $issue_date_iso = ''
 		}
 	}
 
-	// Fallback to CPT-based selection
-	return cg_select_certificate_template_from_cpt( $certificate_type, $issue_date_iso, $strict );
+	return null;
 }
 
-/**
- * Original CPT-based template selection (fallback).
- */
-function cg_select_certificate_template_from_cpt( $certificate_type, $issue_date_iso = '', $strict = true ) {
-	// ── Step 1: fetch all templates for this certificate_type ─────────────────
-	$query      = new WP_Query(
-		array(
-			'post_type'      => 'certificates',
-			'posts_per_page' => 50,
-			'meta_query'     => array(
-				array(
-					'key'     => 'certificate_type',
-					'value'   => $certificate_type,
-					'compare' => '=',
-				),
-			),
-		)
-	);
-	$candidates = $query->posts;
-
-	// Fallback: case-insensitive search when the exact-case query returns nothing
-	if ( empty( $candidates ) ) {
-		$all = get_posts(
-			array(
-				'post_type'      => 'certificates',
-				'posts_per_page' => 50,
-				'fields'         => 'ids',
-			)
-		);
-		foreach ( $all as $tpl_id ) {
-			$t = get_post_meta( $tpl_id, 'certificate_type', true );
-			if ( strtolower( trim( $t ) ) === strtolower( trim( $certificate_type ) ) ) {
-				$candidates[] = get_post( $tpl_id );
-			}
-		}
-	}
-
-	if ( empty( $candidates ) ) {
-		return null;
-	}
-
-	// ── Step 2: only one template exists — return it directly (no date needed) ─
-	if ( count( $candidates ) === 1 ) {
-		return $candidates[0];
-	}
-
-	// ── Step 3: split by whether each template carries an event_date ──────────
-	$with_date    = array();
-	$without_date = array();
-	foreach ( $candidates as $tpl ) {
-		$ev = trim( get_post_meta( $tpl->ID, 'event_date', true ) );
-		if ( $ev !== '' ) {
-			$with_date[] = $tpl;
-		} else {
-			$without_date[] = $tpl;
-		}
-	}
-
-	// No template has event_date — cannot distinguish; warn and return first
-	if ( empty( $with_date ) ) {
-		error_log(
-			'CG Warning: Multiple templates for "' . $certificate_type
-			. '" but none have event_date set.'
-		);
-		return $candidates[0];
-	}
-
-	// ── Step 4: EXACT match — event_date must equal issue_date (Y-m-d) ────────
-	$normalised_issue = '';
-	if ( ! empty( $issue_date_iso ) ) {
-		// Normalise the incoming date to Y-m-d for a reliable string comparison
-		if ( preg_match( '/^\d{4}-\d{2}-\d{2}$/', $issue_date_iso ) ) {
-			$normalised_issue = $issue_date_iso;
-		} else {
-			$dt = DateTime::createFromFormat( 'd-m-Y', $issue_date_iso )
-				?: date_create( $issue_date_iso );
-			if ( $dt ) {
-				$normalised_issue = $dt->format( 'Y-m-d' );
-			}
-		}
-
-		if ( $normalised_issue ) {
-			// Look for a template whose event_date matches exactly
-			foreach ( $with_date as $tpl ) {
-				$ev = trim( get_post_meta( $tpl->ID, 'event_date', true ) );
-				// Normalise the stored event_date as well
-				if ( preg_match( '/^\d{4}-\d{2}-\d{2}$/', $ev ) ) {
-					$ev_norm = $ev;
-				} else {
-					$dt_ev   = DateTime::createFromFormat( 'd-m-Y', $ev )
-						?: date_create( $ev );
-					$ev_norm = $dt_ev ? $dt_ev->format( 'Y-m-d' ) : '';
-				}
-
-				if ( $ev_norm === $normalised_issue ) {
-					return $tpl; // ✅ exact match
-				}
-			}
-
-			// No exact match found.
-			$available = implode(
-				', ',
-				array_map(
-					fn( $t ) => trim( get_post_meta( $t->ID, 'event_date', true ) ),
-					$with_date
-				)
-			);
-			error_log(
-				'CG: No exact event_date match for certificate_type="'
-				. $certificate_type . '" issue_date="' . $issue_date_iso . '"'
-				. '. Available event_dates: ' . $available . '. Falling back to closest event_date.'
-			);
-
-			if ( $strict ) {
-				return null;  // strict mode: caller must handle missing template
-			}
-			// else: fall through to closest-date matching below
-		}
-	}
-
-	// ── Step 5: Fallback ─────────────────────────────────────────────────────────
-	if ( $normalised_issue !== '' ) {
-		// issue_date was given but no exact match — pick the closest event_date
-		usort(
-			$with_date,
-			function ( $a, $b ) use ( $normalised_issue ) {
-				$ts = strtotime( $normalised_issue );
-				$ea = strtotime( trim( get_post_meta( $a->ID, 'event_date', true ) ) );
-				$eb = strtotime( trim( get_post_meta( $b->ID, 'event_date', true ) ) );
-				return abs( $ea - $ts ) - abs( $eb - $ts );
-			}
-		);
-	} else {
-		// No issue_date provided — return the most-recent event_date template
-		usort(
-			$with_date,
-			fn( $a, $b ) =>
-			strtotime( get_post_meta( $b->ID, 'event_date', true ) )
-			- strtotime( get_post_meta( $a->ID, 'event_date', true ) )
-		);
-	}
-	return $with_date[0];
-}
-
-function generate_certificate_pdf_with_data( $post_data ) {
+function _cg_generate_pdf_with_data_impl( $post_data ) {
 	// ── Debug flags ───────────────────────────────────────────────────────────
 	// Set $debug_mode = true only when actively debugging; false for production.
 	$debug_mode = defined( 'WP_DEBUG' ) && WP_DEBUG;
 	// Set $visual_debug = true to overlay field-boundary markers on the PDF.
 	// MUST be false in production — it draws red boxes / coloured dots on certs.
 	// Follows WP_DEBUG: set WP_DEBUG = true in wp-config.php to enable visual markers.
-	$visual_debug = defined( 'WP_DEBUG' ) && WP_DEBUG;
+	$visual_debug = true; // set second operand true only when actively debugging layout
 
 	cg_debug_log( 'Post Data: ' . print_r( $post_data, true ) );
 
@@ -795,9 +923,8 @@ function generate_certificate_pdf_with_data( $post_data ) {
 	certificate_generator_log_debug( 'Template URL: ' . $template_url );
 
 	if ( empty( $template_url ) ) {
-		$error_msg = 'Template URL is missing for certificate template ID: ' . $certificate_template->ID;
-		error_log( $error_msg );
-		echo '<div class="notice notice-error"><p>' . esc_html( $error_msg ) . '</p></div>';
+		$tmpl_id = $certificate_template->id ?? $certificate_template->ID ?? '?';
+		error_log( 'Certificate Generator: Template URL is missing for template ID: ' . $tmpl_id );
 		return false;
 	}
 
@@ -817,7 +944,7 @@ function generate_certificate_pdf_with_data( $post_data ) {
 	if ( function_exists( 'cg_validate_template_url' ) ) {
 		$validation_result = cg_validate_template_url( $template_url, $is_preview );
 		if ( $validation_result !== true ) {
-			echo $validation_result;
+			error_log( 'Certificate Generator: Template URL validation failed: ' . ( is_string( $validation_result ) ? wp_strip_all_tags( $validation_result ) : 'unknown' ) );
 			return false;
 		}
 	}
@@ -1140,6 +1267,20 @@ function generate_certificate_pdf_with_data( $post_data ) {
 	return $upload_dir['url'] . '/' . $pdf_filename;
 }
 
+// ── Public shim for generate_certificate_pdf_with_data ───────────────────────
+// When CG_USE_NEW_PDF=true, legacy-shims.php defines this function and routes
+// it through PdfGenerator::makeFromArray(). When the flag is off (default),
+// this wrapper is used so all 5 call sites continue to work unchanged.
+if ( ! class_exists( '\CertificateGenerator\Core\Config' )
+	|| ! \CertificateGenerator\Core\Config::flag( 'CG_USE_NEW_PDF' ) ) {
+	/**
+	 * @deprecated v8 Use \CertificateGenerator\Services\PdfGenerator::makeFromArray() instead.
+	 */
+	function generate_certificate_pdf_with_data( $post_data ) {
+		return _cg_generate_pdf_with_data_impl( $post_data );
+	}
+}
+
 /**
  * Insert a row into the wp_certificate_generator table after a certificate
  * has been generated.  This is the record that the public verification
@@ -1384,7 +1525,7 @@ function cg_resolve_entity_template( ?array $entity_data, int $post_id = 0 ) {
 	return cg_select_certificate_template( $certificate_type, $issue_date_iso );
 }
 
-function generate_certificate_pdf( $post_id, $fields, $student_data = null ) {
+function _cg_generate_pdf_impl( $post_id, $fields, $student_data = null ) {
 	// If student_data is provided (from SQL table), use it instead of post meta
 	$use_table_data = is_array( $student_data ) && ! empty( $student_data );
 
@@ -1430,9 +1571,7 @@ function generate_certificate_pdf( $post_id, $fields, $student_data = null ) {
 	cg_debug_log( 'Requested fields: ' . print_r( $fields, true ) );
 
 	if ( ! $certificate_type ) {
-		$error_msg = 'Certificate type is missing for post ID: ' . $post_id;
-		error_log( $error_msg );
-		echo '<div class="notice notice-error"><p>' . esc_html( $error_msg ) . '</p></div>';
+		error_log( 'Certificate Generator: Certificate type is missing for post ID: ' . $post_id );
 		return false;
 	}
 
@@ -1455,12 +1594,7 @@ function generate_certificate_pdf( $post_id, $fields, $student_data = null ) {
 	// strict=true for CPT-only callers that rely on exact event_date matching.
 	$certificate_template = cg_select_certificate_template( $certificate_type, $issue_date_iso, ! $use_table_data );
 	if ( ! $certificate_template ) {
-		$error_msg = 'No certificate template found for type: ' . $certificate_type;
-		error_log( $error_msg );
-		echo '<div class="certificate-request-form" style="margin: 20px auto; max-width: 600px; padding: 20px; background: #f8f9fa; border-radius: 5px;">';
-		echo '<p style="margin-bottom: 15px;">' . esc_html( $error_msg ) . '</p>';
-		echo '<p>Please kindly fill the form below if you don\'t find your certificate. You will receive a copy within 7 days.</p>';
-		echo '</div>';
+		error_log( 'Certificate Generator: No certificate template found for type: ' . $certificate_type );
 		return false;
 	}
 
@@ -1490,9 +1624,7 @@ function generate_certificate_pdf( $post_id, $fields, $student_data = null ) {
 	$template_url = $tmpl_meta['template_url'][0] ?? '';
 
 	if ( empty( $template_url ) ) {
-		$error_msg = 'Template URL is missing for certificate template ID: ' . ( $certificate_template->ID ?? $certificate_template->id ?? 'unknown' );
-		error_log( $error_msg );
-		echo '<div class="notice notice-error"><p>' . esc_html( $error_msg ) . '</p></div>';
+		error_log( 'Certificate Generator: Template URL is missing for template ID: ' . ( $certificate_template->ID ?? $certificate_template->id ?? 'unknown' ) );
 		return false;
 	}
 
@@ -1574,6 +1706,17 @@ function generate_certificate_pdf( $post_id, $fields, $student_data = null ) {
 		error_log( 'Certificate generation failed: No valid field positions found. Missing positions for: ' . $missing_fields );
 		return false;
 	}
+
+	// Normalise field positions: coerce to correct types so render logic never
+	// receives raw strings from JSON decode.
+	foreach ( $field_positions as &$pos ) {
+		$pos['x']       = is_numeric( $pos['x'] ) ? floatval( $pos['x'] ) : '';
+		$pos['y']       = is_numeric( $pos['y'] ) ? floatval( $pos['y'] ) : '';
+		$pos['width']   = is_numeric( $pos['width'] ) ? floatval( $pos['width'] ) : 100.0;
+		$pos['align']   = cg_sanitize_alignment( (string) ( $pos['align'] ?? 'C' ) );
+		$pos['visible'] = ( $pos['visible'] === '0' || $pos['visible'] === 0 || $pos['visible'] === 'false' ) ? '0' : '1';
+	}
+	unset( $pos );
 
 	// Warn (but do not block) if all positions are zero or all fields are hidden —
 	// this produces a blank-looking certificate; admin should set positions via TemplatesPage.
@@ -1827,22 +1970,13 @@ function generate_certificate_pdf( $post_id, $fields, $student_data = null ) {
 			cg_insert_certificate_record( $record_data, $serial_number );
 		}
 
-		// Output PDF
-		$upload_dir = wp_upload_dir();
-		// Ensure directory exists and is writable
-		$upload_path = $upload_dir['path'];
-		if ( ! file_exists( $upload_path ) ) {
-			wp_mkdir_p( $upload_path );
-			cg_debug_log( "Created upload directory: $upload_path" );
-		}
+		// Output PDF into dedicated cg_certificates folder.
+		$upload_dir  = wp_upload_dir();
+		$upload_path = cg_certificates_dir();
 
-		// Use consistent path format with correct directory separators
-		$pdf_path = rtrim( $upload_path, '/\\' ) . DIRECTORY_SEPARATOR . "certificate_$post_id.pdf";
-		// Normalize the path to handle mixed separators consistently
+		$pdf_path = $upload_path . DIRECTORY_SEPARATOR . "certificate_$post_id.pdf";
 		$pdf_path = wp_normalize_path( $pdf_path );
 
-		// Debug: Log upload directory and file path
-		cg_debug_log( 'Upload directory: ' . print_r( $upload_dir, true ) );
 		cg_debug_log( "PDF file path: $pdf_path" );
 
 		// Check if directory is writable
@@ -1873,8 +2007,7 @@ function generate_certificate_pdf( $post_id, $fields, $student_data = null ) {
 			return false;
 		}
 
-		// Generate consistent file URL that matches the file path structure
-		$file_url = $upload_dir['url'] . "/certificate_$post_id.pdf";
+		$file_url = cg_certificates_url() . "/certificate_$post_id.pdf";
 		cg_debug_log( "PDF generated successfully. URL: $file_url" );
 
 		// Store the actual file path in a post meta for easier retrieval
@@ -1933,6 +2066,20 @@ function generate_certificate_pdf( $post_id, $fields, $student_data = null ) {
 	}
 }
 
+// ── Public shim for generate_certificate_pdf ─────────────────────────────────
+// When CG_USE_NEW_PDF=true, legacy-shims.php defines this function and routes
+// it through PdfGenerator::make(). When the flag is off (default), this wrapper
+// is used so all ~11 call sites continue to work unchanged.
+if ( ! class_exists( '\CertificateGenerator\Core\Config' )
+	|| ! \CertificateGenerator\Core\Config::flag( 'CG_USE_NEW_PDF' ) ) {
+	/**
+	 * @deprecated v8 Use \CertificateGenerator\Services\PdfGenerator::make() instead.
+	 */
+	function generate_certificate_pdf( $post_id, $fields = array(), $student_data = null ) {
+		return _cg_generate_pdf_impl( $post_id, $fields, $student_data );
+	}
+}
+
 /**
  * Generate certificate PDF for email purposes
  *
@@ -1945,158 +2092,40 @@ function generate_certificate_pdf( $post_id, $fields, $student_data = null ) {
  * @return array|bool Array containing 'path' and 'url' of the generated PDF, or false on failure
  */
 function generate_certificate_pdf_email( $post_id, $fields, $email_options = null ) {
-	// Debug log the input parameters
-	if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
-		cg_debug_log( "Generating certificate PDF for email. Post ID: {$post_id}" );
-		cg_debug_log( 'Fields: ' . print_r( $fields, true ) );
-		cg_debug_log( 'Email options: ' . print_r( $email_options, true ) );
-	}
-
-	// Ensure we have valid fields based on post type if not provided
+	// Resolve fields when caller didn't supply them.
 	if ( empty( $fields ) ) {
 		$post_type = get_post_type( $post_id );
-		switch ( $post_type ) {
-			case 'students':
-				if ( class_exists( 'CG_Field_Schema' ) ) {
-					// SQL-first: resolve certificate_type for field schema
-					$cert_type = '';
-					if ( class_exists( '\CertificateGenerator\Database\CustomTables' ) ) {
-						global $wpdb;
-						$_ct_tables = \CertificateGenerator\Database\CustomTables::instance();
-						foreach ( array( 'students', 'teachers', 'schools' ) as $_ct_entity ) {
-							$_ct_tbl = $_ct_tables->get_table( $_ct_entity );
-							if ( $_ct_tbl
-								&& $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $_ct_tbl ) ) === $_ct_tbl
-							) {
-								$_ct_row = $wpdb->get_row(
-									$wpdb->prepare(
-										"SELECT certificate_type FROM $_ct_tbl WHERE wp_post_id = %d LIMIT 1",
-										$post_id
-									),
-									ARRAY_A
-								);
-								if ( ! empty( $_ct_row['certificate_type'] ) ) {
-									$cert_type = $_ct_row['certificate_type'];
-									break;
-								}
-							}
-						}
-					}
-					if ( empty( $cert_type ) ) {
-						$cert_type = get_post_meta( $post_id, 'certificate_type', true );
-					}
-					$fields = CG_Field_Schema::get_all_renderable_fields( $cert_type );
-				} else {
+		$cert_type = get_post_meta( $post_id, 'certificate_type', true );
+		if ( class_exists( 'CG_Field_Schema' ) && $cert_type ) {
+			$fields = CG_Field_Schema::get_all_renderable_fields( $cert_type );
+		} else {
+			switch ( $post_type ) {
+				case 'teachers':
+					$fields = array( 'teacher_name', 'school_name', 'issue_date' );
+					break;
+				case 'schools':
+					$fields = array( 'school_name', 'issue_date' );
+					break;
+				default:
 					$fields = array( 'student_name', 'school_name', 'issue_date' );
-				}
-				break;
-			case 'teachers':
-				$fields = array( 'teacher_name', 'school_name', 'issue_date' );
-				break;
-			case 'schools':
-				$fields = array( 'school_name', 'issue_date' );
-				break;
-			default:
-				if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
-					cg_debug_log( "Invalid post type: {$post_type}" );
-				}
-				return false;
-		}
-		if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
-			cg_debug_log( "Using default fields for post type {$post_type}: " . print_r( $fields, true ) );
+			}
 		}
 	}
 
-	// Call the original function to generate the PDF (removed $email_options)
+	// generate_certificate_pdf() does SQL-first data lookup, writes postmeta, returns URL.
 	$certificate_url = generate_certificate_pdf( $post_id, $fields );
-
-	// If PDF generation failed, return false
 	if ( ! $certificate_url ) {
-		error_log( "Certificate generation failed for post ID: {$post_id}" );
+		error_log( "Certificate Generator: PDF generation failed for post ID: {$post_id}" );
 		return false;
 	}
 
-	// SQL-first: read pdf_path from wp_cg_certificates, fall back to post meta
-	$certificate_path = '';
-	if ( class_exists( '\CertificateGenerator\Database\CustomTables' ) ) {
-		global $wpdb;
-		$_pf_tables     = \CertificateGenerator\Database\CustomTables::instance();
-		$_pf_cert_table = $_pf_tables->get_table( 'certificates' );
-		if ( $_pf_cert_table
-			&& $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $_pf_cert_table ) ) === $_pf_cert_table
-		) {
-			$certificate_path = (string) $wpdb->get_var(
-				$wpdb->prepare(
-					"SELECT pdf_path FROM $_pf_cert_table
-                 WHERE wp_post_id = %d AND pdf_path IS NOT NULL AND pdf_path != ''
-                 ORDER BY id DESC LIMIT 1",
-					$post_id
-				)
-			);
-		}
-	}
-	if ( empty( $certificate_path ) ) {
-		$certificate_path = get_post_meta( $post_id, 'certificate_file_path', true );
-	}
-
-	// Normalize the path to handle mixed separators on Windows
-	if ( ! empty( $certificate_path ) ) {
-		$certificate_path = wp_normalize_path( $certificate_path );
-		// Update the meta with normalized path
-		update_post_meta( $post_id, 'certificate_file_path', $certificate_path );
-	}
-
-	// Verify the file exists
+	// Path was written to postmeta by generate_certificate_pdf — read it back.
+	$certificate_path = wp_normalize_path( (string) get_post_meta( $post_id, 'certificate_file_path', true ) );
 	if ( empty( $certificate_path ) || ! file_exists( $certificate_path ) ) {
-		if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
-			cg_debug_log( "Certificate file not found at path: {$certificate_path}" );
-			cg_debug_log( "Attempting to regenerate certificate for post ID: {$post_id}" );
-		}
-		// Try to regenerate if file doesn't exist
-		// Removed $email_options
-		$certificate_url = generate_certificate_pdf( $post_id, $fields );
-		if ( $certificate_url ) {
-			// SQL-first on regeneration path
-			$certificate_path = '';
-			if ( class_exists( '\CertificateGenerator\Database\CustomTables' ) ) {
-				global $wpdb;
-				$_pf2_tables     = \CertificateGenerator\Database\CustomTables::instance();
-				$_pf2_cert_table = $_pf2_tables->get_table( 'certificates' );
-				if ( $_pf2_cert_table
-					&& $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $_pf2_cert_table ) ) === $_pf2_cert_table
-				) {
-					$certificate_path = (string) $wpdb->get_var(
-						$wpdb->prepare(
-							"SELECT pdf_path FROM $_pf2_cert_table
-                         WHERE wp_post_id = %d AND pdf_path IS NOT NULL AND pdf_path != ''
-                         ORDER BY id DESC LIMIT 1",
-							$post_id
-						)
-					);
-				}
-			}
-			if ( empty( $certificate_path ) ) {
-				$certificate_path = get_post_meta( $post_id, 'certificate_file_path', true );
-			}
-			$certificate_path = wp_normalize_path( $certificate_path );
-			if ( file_exists( $certificate_path ) ) {
-				if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
-					cg_debug_log( "Certificate regenerated successfully at: {$certificate_path}" );
-				}
-			} else {
-				error_log( "Certificate Generator: Certificate regeneration failed for post ID: {$post_id}" );
-				return false;
-			}
-		} else {
-			return false;
-		}
+		error_log( "Certificate Generator: PDF file missing after generation for post ID: {$post_id}" );
+		return false;
 	}
 
-	if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
-		cg_debug_log( "Certificate generated successfully. Path: {$certificate_path}, URL: {$certificate_url}" );
-	}
-
-	// Return both the file path and URL
 	return array(
 		'path' => $certificate_path,
 		'url'  => $certificate_url,
@@ -2653,9 +2682,8 @@ function school_search_shortcode() {
 					$cert_type_sanitized = ! empty( $current_cert_type ) ? sanitize_file_name( $current_cert_type ) : 'standard';
 					$timestamp           = current_time( 'timestamp' );
 
-					// Create a truly unique filename with more identifiers
-					$unique_id       = $post_id . '-' . substr( md5( $s_name_sanitized . $place_sanitized . $timestamp ), 0, 10 );
-					$unique_filename = $s_name_sanitized . '-' . $place_sanitized . '-' . $cert_type_sanitized . '-' . $unique_id . '.pdf';
+					$unique_id       = $post_id . '-' . substr( md5( $s_name_sanitized . $place_sanitized . $timestamp ), 0, 8 );
+					$unique_filename = cg_certificate_pdf_filename( $current_school_name, $current_cert_type, $unique_id );
 
 					// Convert URL to file path
 					$upload_dir = wp_upload_dir();
@@ -2701,9 +2729,9 @@ function school_search_shortcode() {
 			$timestamp             = current_time( 'timestamp' );
 			$school_name_sanitized = sanitize_file_name( $school_name_query );
 			$place_sanitized       = sanitize_file_name( $place_query );
-			$zip_filename          = 'school_certificates_' . $school_name_sanitized . '_' . $place_sanitized . '_' . $timestamp . '.zip';
-			$zip_path              = $upload_dir['basedir'] . '/' . $zip_filename;
-			$zip_url               = $upload_dir['baseurl'] . '/' . $zip_filename;
+			$zip_filename          = cg_certificate_zip_filename( $school_name_query . ' ' . $place_query, (int) $timestamp );
+			$zip_path              = cg_certificates_dir() . '/' . $zip_filename;
+			$zip_url               = cg_certificates_url() . '/' . $zip_filename;
 
 			// Remove old ZIP file if it exists
 			if ( file_exists( $zip_path ) ) {
@@ -3160,8 +3188,8 @@ function scs_student_search_shortcode() {
 				if ( $file_url ) {
 					$s_name          = sanitize_file_name( $student_name );
 					$sc_name         = sanitize_file_name( $school_name );
-					$unique_id       = $post_id . '-' . substr( md5( $s_name . $sc_name . time() ), 0, 10 );
-					$unique_filename = $s_name . '-' . $sc_name . '-' . $unique_id . '.pdf';
+					$unique_id       = $post_id . '-' . substr( md5( $s_name . $sc_name . time() ), 0, 8 );
+					$unique_filename = cg_certificate_pdf_filename( $student_name, $certificate_type, $unique_id );
 
 					$upload_dir = wp_upload_dir();
 					$file_path  = str_replace( $upload_dir['baseurl'], $upload_dir['basedir'], $file_url );
@@ -3179,15 +3207,25 @@ function scs_student_search_shortcode() {
 				}
 			}
 
+			// If no PDFs generated but student exists, check for pending/scheduled template.
+			if ( empty( $certificates ) ) {
+				$pending = cg_get_pending_certificate_info( $email );
+				if ( $pending ) {
+					$output = cg_render_pending_certificate_screen( $pending );
+					wp_reset_postdata();
+					return $output;
+				}
+			}
+
 			// Prepare ZIP download if certificates exist
 			$bulk_download_link = '';
 			if ( ! empty( $certificates ) && class_exists( 'ZipArchive' ) && count( $certificates ) > 3 ) {
 
 				$upload_dir   = wp_upload_dir();
 				$timestamp    = current_time( 'timestamp' );
-				$zip_filename = 'certificates_' . $timestamp . '.zip';
-				$zip_path     = $upload_dir['basedir'] . '/' . $zip_filename;
-				$zip_url      = $upload_dir['baseurl'] . '/' . $zip_filename;
+				$zip_filename = cg_certificate_zip_filename( $email, (int) $timestamp );
+				$zip_path     = cg_certificates_dir() . '/' . $zip_filename;
+				$zip_url      = cg_certificates_url() . '/' . $zip_filename;
 
 				// Remove old ZIP file if it exists
 				if ( file_exists( $zip_path ) ) {

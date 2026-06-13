@@ -319,27 +319,6 @@ if (class_exists('\CertificateGenerator\Database\CustomTables')) {
         );
     }, 10);
 
-    // Sync hooks - mirror CPT saves to custom tables
-    add_action('save_post_students', function($post_id) {
-        if (defined('DOING_AUTOSAVE') && DOING_AUTOSAVE) return;
-        if (class_exists('\CertificateGenerator\Database\DataMigration')) {
-            (new \CertificateGenerator\Database\DataMigration())->sync_student($post_id);
-        }
-    }, 20);
-
-    add_action('save_post_teachers', function($post_id) {
-        if (defined('DOING_AUTOSAVE') && DOING_AUTOSAVE) return;
-        if (class_exists('\CertificateGenerator\Database\DataMigration')) {
-            (new \CertificateGenerator\Database\DataMigration())->sync_teacher($post_id);
-        }
-    }, 20);
-
-    add_action('save_post_schools', function($post_id) {
-        if (defined('DOING_AUTOSAVE') && DOING_AUTOSAVE) return;
-        if (class_exists('\CertificateGenerator\Database\DataMigration')) {
-            (new \CertificateGenerator\Database\DataMigration())->sync_school($post_id);
-        }
-    }, 20);
 
 
 }

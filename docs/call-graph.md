@@ -73,28 +73,29 @@
 
 ---
 
-## `cg_build_certificate_zip()` — canonical ZIP
+## `certificate_generator_create_zip_for_email( $certificates_data, $recipient_email )` — canonical ZIP
 
-**Defined:** `includes/Email/functions.php:228`  
-*SQL-row sourced, cg_id in filename, CREATE|OVERWRITE — the reference implementation.*
+**Defined:** `includes/Email/functions.php` (formerly at :202, renamed to `_cg_create_zip_impl` in Phase 2a)  
+*Accepts `[['path','filename']]` array + recipient string. CREATE|OVERWRITE. Returns `['zip_path','zip_url','certificate_count','failed_count','failed_files']`.*
 
-No external callers yet — all ZIP consumers build their own `ZipArchive` inline (see below).
+**Phase 2b status:** All 6 inline builders now delegate here. ✅
+
+| Caller | Line (approx) | Context |
+|--------|--------------|---------|
+| `includes/Services/background-processor.php` | ~267 | Async bulk ZIP (Phase 2b) |
+| `includes/Services/bulk-download.php` | ~592 | School bulk download (Phase 2b) |
+| `includes/API/endpoints.php` | ~265 | REST ZIP-all endpoint (Phase 2b) |
+| `includes/API/endpoints.php` | ~385 | REST ZIP-for-email endpoint (Phase 2b) |
+| `includes/Services/certificate-search.php` | ~2727 | Front-end school ZIP (Phase 2b) |
+| `includes/Services/certificate-search.php` | ~3222 | Front-end student ZIP (Phase 2b) |
+| `includes/Email/functions.php` | ~480 | `certificate_generator_send_email()` — original caller |
 
 ---
 
-## Inline `ZipArchive` instances (to be replaced by ZipService in Phase 2)
+## Inline `ZipArchive` instances — Phase 2b status
 
-| File | Line | Context |
-|------|------|---------|
-| `includes/Email/functions.php` | 232 | `cg_build_certificate_zip()` — canonical |
-| `includes/Services/background-processor.php` | 267 | Async bulk ZIP |
-| `includes/Services/bulk-download.php` | 600 | School bulk download |
-| `includes/API/endpoints.php` | 276 | REST ZIP-all endpoint |
-| `includes/API/endpoints.php` | 396 | REST ZIP-for-email endpoint |
-| `includes/Services/certificate-search.php` | 2713 | Front-end teacher ZIP |
-| `includes/Services/certificate-search.php` | 3207 | Front-end student ZIP |
-
-**Total inline ZIP builders: 7** (6 to migrate to `ZipService`, 1 becomes ZipService itself)
+All 6 inline builders have been replaced by calls to `certificate_generator_create_zip_for_email()`.
+The only remaining `ZipArchive` instance is inside `_cg_create_zip_impl` (canonical impl) in `includes/Email/functions.php`.
 
 ---
 
@@ -105,19 +106,18 @@ After Phase 1–2 all callers stay put; the functions become one-liners:
 ```php
 // includes/legacy-shims.php (frozen, @deprecated v8)
 function generate_certificate_pdf( $id, $fields = [], $data = null ) {
-    return \CertificateGenerator\Services\PdfGenerator::create(
-        \CertificateGenerator\Services\PdfGenerator::resolve( $id, $fields, $data ) );
+    return \CertificateGenerator\Services\PdfGenerator::make( $id, $fields, $data );
 }
 
 function generate_certificate_pdf_with_data( $post_data ) {
-    return \CertificateGenerator\Services\PdfGenerator::createFromArray( $post_data );
+    return \CertificateGenerator\Services\PdfGenerator::makeFromArray( $post_data );
 }
 
 function generate_certificate_pdf_email( $id, $fields, $opts = null ) {
     return generate_certificate_pdf( $id, $fields ); // now same path
 }
 
-function cg_build_certificate_zip( $cg_id ) {
-    return \CertificateGenerator\Services\ZipService::forEmail( $cg_id );
+function certificate_generator_create_zip_for_email( $certs, $recipient = '' ) {
+    return \CertificateGenerator\Services\ZipService::make( $certs, $recipient );
 }
 ```

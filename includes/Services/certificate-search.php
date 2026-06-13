@@ -2724,45 +2724,13 @@ function school_search_shortcode() {
 
 			// Prepare ZIP download if multiple certificates exist and were successfully generated
 			$bulk_download_link = '';
-		if ( count( $certificates_data ) > 1 && class_exists( 'ZipArchive' ) ) { // Changed from >3 to >1 for schools
-			$upload_dir            = wp_upload_dir();
-			$timestamp             = current_time( 'timestamp' );
-			$school_name_sanitized = sanitize_file_name( $school_name_query );
-			$place_sanitized       = sanitize_file_name( $place_query );
-			$zip_filename          = cg_certificate_zip_filename( $school_name_query . ' ' . $place_query, (int) $timestamp );
-			$zip_path              = cg_certificates_dir() . '/' . $zip_filename;
-			$zip_url               = cg_certificates_url() . '/' . $zip_filename;
-
-			// Remove old ZIP file if it exists
-			if ( file_exists( $zip_path ) ) {
-				@unlink( $zip_path );
-			}
-
-			$zip = new ZipArchive();
-			if ( $zip->open( $zip_path, ZipArchive::CREATE ) === true ) {
-				$zip_success = true;
-				foreach ( $certificates_data as $certificate ) {
-					if ( file_exists( $certificate['path'] ) ) {
-						// Add file to ZIP with unique name to prevent overwriting
-						if ( ! $zip->addFile( $certificate['path'], $certificate['filename'] ) ) {
-							error_log( 'Failed to add school certificate to ZIP: ' . $certificate['path'] );
-							$zip_success = false;
-						}
-					} else {
-						error_log( 'Certificate file does not exist: ' . $certificate['path'] );
-						$zip_success = false;
-					}
-				}
-				$zip->close();
-
-				if ( $zip_success && file_exists( $zip_path ) ) {
-					// Styling for this button will be handled by plugin options later
-					$bulk_download_link = $zip_url; // Store URL for now
-				} else {
-					error_log( 'Failed to create ZIP file or ZIP file does not exist: ' . $zip_path );
-				}
-			} else {
-				error_log( 'Failed to open ZIP file for writing: ' . $zip_path );
+		if ( count( $certificates_data ) > 1 && function_exists( 'certificate_generator_create_zip_for_email' ) ) {
+			$zip_result = certificate_generator_create_zip_for_email(
+				array_values( $certificates_data ),
+				$school_name_query . ' ' . $place_query
+			);
+			if ( $zip_result && $zip_result['certificate_count'] > 0 ) {
+				$bulk_download_link = $zip_result['zip_url'];
 			}
 		}
 
@@ -3219,36 +3187,10 @@ function scs_student_search_shortcode() {
 
 			// Prepare ZIP download if certificates exist
 			$bulk_download_link = '';
-			if ( ! empty( $certificates ) && class_exists( 'ZipArchive' ) && count( $certificates ) > 3 ) {
-
-				$upload_dir   = wp_upload_dir();
-				$timestamp    = current_time( 'timestamp' );
-				$zip_filename = cg_certificate_zip_filename( $email, (int) $timestamp );
-				$zip_path     = cg_certificates_dir() . '/' . $zip_filename;
-				$zip_url      = cg_certificates_url() . '/' . $zip_filename;
-
-				// Remove old ZIP file if it exists
-				if ( file_exists( $zip_path ) ) {
-					@unlink( $zip_path );
-				}
-
-				$zip = new ZipArchive();
-				if ( $zip->open( $zip_path, ZipArchive::CREATE ) === true ) {
-					$success = true;
-					foreach ( $certificates as $certificate ) {
-						if ( file_exists( $certificate['path'] ) ) {
-							// Add file to ZIP with unique name to prevent overwriting
-							if ( ! $zip->addFile( $certificate['path'], $certificate['filename'] ) ) {
-								error_log( 'Failed to add file to ZIP: ' . $certificate['path'] );
-								$success = false;
-							}
-						}
-					}
-					$zip->close();
-
-					if ( $success && file_exists( $zip_path ) ) {
-						$bulk_download_link = '<a href="' . esc_url( $zip_url ) . '" class="bulk-download-button" style="display: inline-block; margin-top: 15px; padding: 10px 20px; background: linear-gradient(to right, #3498db, #2980b9); color: white; text-decoration: none; border-radius: 5px; font-weight: bold;">Download All Certificates (ZIP)</a>';
-					}
+			if ( ! empty( $certificates ) && count( $certificates ) > 3 && function_exists( 'certificate_generator_create_zip_for_email' ) ) {
+				$zip_result = certificate_generator_create_zip_for_email( $certificates, $email );
+				if ( $zip_result && $zip_result['certificate_count'] > 0 ) {
+					$bulk_download_link = '<a href="' . esc_url( $zip_result['zip_url'] ) . '" class="bulk-download-button" style="display: inline-block; margin-top: 15px; padding: 10px 20px; background: linear-gradient(to right, #3498db, #2980b9); color: white; text-decoration: none; border-radius: 5px; font-weight: bold;">Download All Certificates (ZIP)</a>';
 				}
 			}
 

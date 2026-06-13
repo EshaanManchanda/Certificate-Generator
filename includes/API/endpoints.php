@@ -262,49 +262,26 @@ function certificate_generator_issue_from_table( string $email, $request ): WP_R
 		);
 	}
 
-	if ( count( $certificates ) > 3 && class_exists( 'ZipArchive' ) ) {
-		$upload_dir   = wp_upload_dir();
-		$timestamp    = current_time( 'timestamp' );
-		$zip_filename = 'certificates_' . $timestamp . '.zip';
-		$zip_path     = $upload_dir['basedir'] . '/' . $zip_filename;
-		$zip_url      = $upload_dir['baseurl'] . '/' . $zip_filename;
-
-		if ( file_exists( $zip_path ) ) {
-			@unlink( $zip_path );
-		}
-
-		$zip = new ZipArchive();
-		if ( $zip->open( $zip_path, ZipArchive::CREATE ) === true ) {
-			$success = true;
-			foreach ( $certificates as $certificate ) {
-				if ( file_exists( $certificate['path'] ) ) {
-					if ( ! $zip->addFile( $certificate['path'], $certificate['filename'] ) ) {
-						$success = false;
-					}
-				}
-			}
-			$zip->close();
-
-			if ( $success && file_exists( $zip_path ) ) {
-				certificate_generator_log_api_activity(
-					'CERTIFICATES_ZIPPED',
-					array(
-						'student_email' => $email,
-						'download_url'  => $zip_url,
-						'timestamp'     => current_time( 'mysql' ),
-					)
-				);
-
-				return new WP_REST_Response(
-					array(
-						'status'            => 'success',
-						'message'           => 'Certificates generated and zipped successfully.',
-						'download_url'      => $zip_url,
-						'certificate_count' => count( $certificates ),
-					),
-					200
-				);
-			}
+	if ( count( $certificates ) > 3 && function_exists( 'certificate_generator_create_zip_for_email' ) ) {
+		$zip_result = certificate_generator_create_zip_for_email( $certificates, $email );
+		if ( $zip_result && $zip_result['certificate_count'] > 0 ) {
+			certificate_generator_log_api_activity(
+				'CERTIFICATES_ZIPPED',
+				array(
+					'student_email' => $email,
+					'download_url'  => $zip_result['zip_url'],
+					'timestamp'     => current_time( 'mysql' ),
+				)
+			);
+			return new WP_REST_Response(
+				array(
+					'status'            => 'success',
+					'message'           => 'Certificates generated and zipped successfully.',
+					'download_url'      => $zip_result['zip_url'],
+					'certificate_count' => $zip_result['certificate_count'],
+				),
+				200
+			);
 		}
 	}
 
@@ -382,50 +359,26 @@ function certificate_generator_issue_from_cpt( string $email, $request ) {
 		);
 	}
 
-	if ( count( $certificates ) > 3 && class_exists( 'ZipArchive' ) ) {
-		$upload_dir   = wp_upload_dir();
-		$timestamp    = current_time( 'timestamp' );
-		$zip_filename = 'certificates_' . $timestamp . '.zip';
-		$zip_path     = $upload_dir['basedir'] . '/' . $zip_filename;
-		$zip_url      = $upload_dir['baseurl'] . '/' . $zip_filename;
-
-		if ( file_exists( $zip_path ) ) {
-			@unlink( $zip_path );
-		}
-
-		$zip = new ZipArchive();
-		if ( $zip->open( $zip_path, ZipArchive::CREATE ) === true ) {
-			$success = true;
-			foreach ( $certificates as $certificate ) {
-				if ( file_exists( $certificate['path'] ) ) {
-					if ( ! $zip->addFile( $certificate['path'], $certificate['filename'] ) ) {
-						error_log( 'Failed to add file to ZIP: ' . $certificate['path'] );
-						$success = false;
-					}
-				}
-			}
-			$zip->close();
-
-			if ( $success && file_exists( $zip_path ) ) {
-				certificate_generator_log_api_activity(
-					'CERTIFICATES_ZIPPED',
-					array(
-						'student_email' => $email,
-						'download_url'  => $zip_url,
-						'timestamp'     => current_time( 'mysql' ),
-					)
-				);
-
-				return new WP_REST_Response(
-					array(
-						'status'            => 'success',
-						'message'           => 'Certificates generated and zipped successfully.',
-						'download_url'      => $zip_url,
-						'certificate_count' => count( $certificates ),
-					),
-					200
-				);
-			}
+	if ( count( $certificates ) > 3 && function_exists( 'certificate_generator_create_zip_for_email' ) ) {
+		$zip_result = certificate_generator_create_zip_for_email( $certificates, $email );
+		if ( $zip_result && $zip_result['certificate_count'] > 0 ) {
+			certificate_generator_log_api_activity(
+				'CERTIFICATES_ZIPPED',
+				array(
+					'student_email' => $email,
+					'download_url'  => $zip_result['zip_url'],
+					'timestamp'     => current_time( 'mysql' ),
+				)
+			);
+			return new WP_REST_Response(
+				array(
+					'status'            => 'success',
+					'message'           => 'Certificates generated and zipped successfully.',
+					'download_url'      => $zip_result['zip_url'],
+					'certificate_count' => $zip_result['certificate_count'],
+				),
+				200
+			);
 		}
 	}
 
@@ -583,9 +536,11 @@ function certificate_generator_generate_certificate_api( $student_id, $certifica
 	$school_name   = get_post_meta( $student_id, 'school_name', true );
 
 	// Generate unique filename
-	$filename         = 'certificate_' . $student_id . '_' . $certificate_id . '_' . time() . '.pdf';
+	$filename = function_exists( 'cg_certificate_pdf_filename' )
+		? cg_certificate_pdf_filename( $student_name, '', $student_id . '_' . $certificate_id )
+		: 'certificate_' . $student_id . '_' . $certificate_id . '_' . time() . '.pdf';
 	$upload_dir       = wp_upload_dir();
-	$certificates_dir = $upload_dir['basedir'] . '/certificates/';
+	$certificates_dir = trailingslashit( function_exists( 'cg_certificates_dir' ) ? cg_certificates_dir() : $upload_dir['basedir'] . '/cg_certificates' );
 
 	// Create directory if it doesn't exist
 	if ( ! file_exists( $certificates_dir ) ) {
@@ -593,7 +548,7 @@ function certificate_generator_generate_certificate_api( $student_id, $certifica
 	}
 
 	$file_path    = $certificates_dir . $filename;
-	$download_url = $upload_dir['baseurl'] . '/certificates/' . $filename;
+	$download_url = ( function_exists( 'cg_certificates_url' ) ? trailingslashit( cg_certificates_url() ) : $upload_dir['baseurl'] . '/cg_certificates/' ) . $filename;
 
 	// Generate PDF using existing function
 	try {

@@ -590,28 +590,22 @@ function school_bulk_certificate_download_shortcode() {
 
 				// Create ZIP file if we have certificates
 				if ( ! empty( $certificate_files ) ) {
-					$zip_filename = function_exists( 'cg_certificate_zip_filename' )
-					? cg_certificate_zip_filename( $school_name )
-					: sanitize_file_name( $school_name . '_certificates.zip' );
-					$zip_path     = ( function_exists( 'cg_certificates_dir' ) ? cg_certificates_dir() : $upload_dir['basedir'] ) . '/' . $zip_filename;
-					$zip_url      = ( function_exists( 'cg_certificates_url' ) ? cg_certificates_url() : $upload_dir['baseurl'] ) . '/' . $zip_filename;
+					$certs_for_zip = array();
+					foreach ( $certificate_files as $file ) {
+						$certs_for_zip[] = array( 'path' => $file, 'filename' => basename( $file ) );
+					}
 
-					// Create new ZIP archive
-					$zip = new ZipArchive();
-					if ( $zip->open( $zip_path, ZipArchive::CREATE | ZipArchive::OVERWRITE ) === true ) {
-						// Add files to ZIP with proper naming
-						foreach ( $certificate_files as $file ) {
-							// Ensure the filename in the ZIP maintains the student_name_id format
-							$zip->addFile( $file, basename( $file ) );
-						}
-						$zip->close();
+					$zip_result = function_exists( 'certificate_generator_create_zip_for_email' )
+						? certificate_generator_create_zip_for_email( $certs_for_zip, $school_name )
+						: false;
 
-						// Clean up temp directory
-						foreach ( $certificate_files as $file ) {
-							unlink( $file );
-						}
-						rmdir( $temp_dir );
+					// Clean up temp files regardless of ZIP outcome.
+					foreach ( $certificate_files as $file ) {
+						@unlink( $file );
+					}
+					@rmdir( $temp_dir );
 
+					if ( $zip_result && $zip_result['certificate_count'] > 0 ) {
 						// Display success message with download link and progress info
 						$output  = '<div style="max-width: 600px; margin: 40px auto; padding: 20px; background: #ffffff; border-radius: 10px; box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);">';
 						$output .= '<h3 style="color: #0073aa; margin-top: 0;">Certificates Generated Successfully</h3>';
@@ -629,7 +623,7 @@ function school_bulk_certificate_download_shortcode() {
 						}
 
 						$output .= '</div>';
-						$output .= '<a href="' . esc_url( $zip_url ) . '" class="button" style="display: inline-block; padding: 12px 20px; background: linear-gradient(to right, #0073aa, #005f8d); color: #fff; text-decoration: none; border-radius: 5px; font-weight: bold; margin-bottom: 15px;">Download All Certificates (ZIP)</a>';
+						$output .= '<a href="' . esc_url( $zip_result['zip_url'] ) . '" class="button" style="display: inline-block; padding: 12px 20px; background: linear-gradient(to right, #0073aa, #005f8d); color: #fff; text-decoration: none; border-radius: 5px; font-weight: bold; margin-bottom: 15px;">Download All Certificates (ZIP)</a>';
 
 						// Add instructions for after download
 						$output .= '<div style="margin-top: 15px; padding: 15px; background: #f0f6fc; border-radius: 5px; font-size: 14px;">';
@@ -645,9 +639,8 @@ function school_bulk_certificate_download_shortcode() {
 						$output .= '</div>';
 
 						// Schedule cleanup of the ZIP file after 1 hour
-						wp_schedule_single_event( time() + 3600, 'cleanup_certificate_zip', array( $zip_path ) );
+						wp_schedule_single_event( time() + 3600, 'cleanup_certificate_zip', array( $zip_result['zip_path'] ) );
 						if ( ! wp_next_scheduled( 'register_cleanup_certificate_hook' ) ) {
-							// Register the cleanup hook if not already registered
 							add_action(
 								'cleanup_certificate_zip',
 								function ( $file_path ) {

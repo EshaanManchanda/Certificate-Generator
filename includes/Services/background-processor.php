@@ -263,65 +263,50 @@ class Certificate_Background_Processor {
 			$cert_meta[ $post_id ] = array( 'name' => $name, 'type' => $type, 'cg_id' => $cg_id ?: (int) $post_id );
 		}
 
-		// Create ZIP file — OVERWRITE prevents stale archive corruption on re-run.
-		$zip = new ZipArchive();
-		if ( $zip->open( $zip_path, ZipArchive::CREATE | ZipArchive::OVERWRITE ) === true ) {
-			$added_files = 0;
-
-			// Add files to ZIP in batches
-			$certificate_chunks = array_chunk( $job_data['certificates'], self::BATCH_SIZE, true );
-
-			foreach ( $certificate_chunks as $chunk ) {
-				foreach ( $chunk as $cert_id => $certificate ) {
-					if ( file_exists( $certificate['path'] ) ) {
-						$meta       = $cert_meta[ $cert_id ] ?? array( 'name' => (string) $cert_id, 'type' => '', 'cg_id' => (int) $cert_id );
-						$clean_name = function_exists( 'cg_certificate_pdf_filename' )
-							? cg_certificate_pdf_filename( $meta['name'], $meta['type'], $meta['cg_id'] )
-							: sanitize_file_name( $meta['name'] . '_' . $meta['type'] . '_' . $meta['cg_id'] . '.pdf' );
-
-						if ( $zip->addFile( $certificate['path'], $clean_name ) ) {
-							++$added_files;
-						} else {
-							$job_data['errors'][] = "Failed to add file to ZIP: {$certificate['path']}";
-						}
-					}
+		// Build normalized file list for the canonical ZIP builder.
+		$certificates_data  = array();
+		$certificate_chunks = array_chunk( $job_data['certificates'], self::BATCH_SIZE, true );
+		foreach ( $certificate_chunks as $chunk ) {
+			foreach ( $chunk as $cert_id => $certificate ) {
+				if ( ! file_exists( $certificate['path'] ) ) {
+					$job_data['errors'][] = "File not found: {$certificate['path']}";
+					continue;
 				}
+				$meta       = $cert_meta[ $cert_id ] ?? array( 'name' => (string) $cert_id, 'type' => '', 'cg_id' => (int) $cert_id );
+				$clean_name = function_exists( 'cg_certificate_pdf_filename' )
+					? cg_certificate_pdf_filename( $meta['name'], $meta['type'], $meta['cg_id'] )
+					: sanitize_file_name( $meta['name'] . '_' . $meta['type'] . '_' . $meta['cg_id'] . '.pdf' );
+				$certificates_data[] = array( 'path' => $certificate['path'], 'filename' => $clean_name );
 			}
+		}
 
-			$zip->close();
-
-			// Store ZIP info for future use if files were added
-			if ( $added_files > 0 ) {
-				$job_data['zip_path']       = $zip_path;
-				$job_data['zip_url']        = $zip_url;
-				$job_data['zip_file_count'] = $added_files;
-
+		if ( ! empty( $certificates_data ) && function_exists( 'certificate_generator_create_zip_for_email' ) ) {
+			$zip_result = certificate_generator_create_zip_for_email(
+				$certificates_data,
+				$job_data['email'] ?? $job_data['email_hash']
+			);
+			if ( $zip_result && $zip_result['certificate_count'] > 0 ) {
+				$job_data['zip_path']       = $zip_result['zip_path'];
+				$job_data['zip_url']        = $zip_result['zip_url'];
+				$job_data['zip_file_count'] = $zip_result['certificate_count'];
 				update_option(
 					$existing_zip_meta_key,
 					array(
-						'path'      => $zip_path,
-						'url'       => $zip_url,
+						'path'      => $zip_result['zip_path'],
+						'url'       => $zip_result['zip_url'],
 						'timestamp' => $timestamp,
-						'count'     => $added_files,
+						'count'     => $zip_result['certificate_count'],
 					)
 				);
-
-				// Invalidate HTML cache to ensure the download button is shown
-				// but keep certificate data cache for future use
 				$this->invalidate_html_cache( $job_data['email_hash'] );
-
 				return true;
-			} else {
-				// No files were added, delete the empty ZIP
-				@unlink( $zip_path );
-				$job_data['errors'][] = 'No valid certificates found to add to ZIP file.';
-				return false;
 			}
+			$job_data['errors'][] = 'No valid certificates could be added to ZIP.';
 		} else {
-			$job_data['errors'][] = "Failed to create ZIP file: $zip_path";
-			error_log( "Failed to create ZIP file: $zip_path" );
-			return false;
+			$job_data['errors'][] = 'Failed to create ZIP: no files or ZIP builder unavailable.';
+			error_log( 'Certificate Generator: ZIP builder unavailable for job ' . ( $job_data['email_hash'] ?? '' ) );
 		}
+		return false;
 	}
 
 	/**

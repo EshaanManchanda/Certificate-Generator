@@ -5,30 +5,37 @@ namespace CertificateGenerator\Database;
 
 /**
  * Base repository providing common database operations.
+ *
+ * Accepts an optional $db argument so concrete repos can be unit-tested
+ * without a live WordPress environment (pass a WpdbFake instead).
  */
 abstract class Repository {
 	protected string $table;
+	protected string $pk = 'id';
+	protected object $db;
 
-	public function __construct( string $table ) {
-		global $wpdb;
-		$this->table = $wpdb->prefix . $table;
+	public function __construct( string $table, ?object $db = null ) {
+		if ( $db !== null ) {
+			$this->db = $db;
+		} else {
+			global $wpdb;
+			$this->db = $wpdb;
+		}
+		$this->table = $this->db->prefix . $table;
 	}
 
-	protected function get_wpdb(): \wpdb {
-		global $wpdb;
-		return $wpdb;
+	public function get_table(): string {
+		return $this->table;
 	}
 
-	private function fetch_array( $result ): ?array {
-		global $wpdb;
-		return $wpdb->fetch_array( $result );
+	protected function get_wpdb(): object {
+		return $this->db;
 	}
 
 	public function find( int $id ): ?array {
-		global $wpdb;
-		$row = $wpdb->get_row(
-			$wpdb->prepare(
-				"SELECT * FROM {$this->table} WHERE id = %d",
+		$row = $this->db->get_row(
+			$this->db->prepare(
+				"SELECT * FROM {$this->table} WHERE {$this->pk} = %d",
 				$id
 			),
 			\ARRAY_A
@@ -37,10 +44,9 @@ abstract class Repository {
 		return $row ?: null;
 	}
 
-	public function find_by( string $column, $value ): ?array {
-		global $wpdb;
-		$row = $wpdb->get_row(
-			$wpdb->prepare(
+	public function find_by( string $column, mixed $value ): ?array {
+		$row = $this->db->get_row(
+			$this->db->prepare(
 				"SELECT * FROM {$this->table} WHERE {$column} = %s",
 				$value
 			),
@@ -51,37 +57,32 @@ abstract class Repository {
 	}
 
 	public function all( int $limit = 100, int $offset = 0 ): array {
-		global $wpdb;
-		return $wpdb->get_results(
-			$wpdb->prepare(
-				"SELECT * FROM {$this->table} ORDER BY id DESC LIMIT %d OFFSET %d",
+		return $this->db->get_results(
+			$this->db->prepare(
+				"SELECT * FROM {$this->table} ORDER BY {$this->pk} DESC LIMIT %d OFFSET %d",
 				$limit,
 				$offset
 			),
 			\ARRAY_A
-		);
+		) ?: [];
 	}
 
 	public function count(): int {
-		global $wpdb;
-		return (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$this->table}" );
+		return (int) $this->db->get_var( "SELECT COUNT(*) FROM {$this->table}" );
 	}
 
 	public function delete( int $id ): bool {
-		global $wpdb;
-		$deleted = $wpdb->delete( $this->table, array( 'id' => $id ), array( '%d' ) );
+		$deleted = $this->db->delete( $this->table, array( $this->pk => $id ), array( '%d' ) );
 		return $deleted > 0;
 	}
 
 	public function insert( array $data ): int {
-		global $wpdb;
-		$wpdb->insert( $this->table, $data );
-		return (int) $wpdb->insert_id;
+		$this->db->insert( $this->table, $data );
+		return (int) $this->db->insert_id;
 	}
 
 	public function update( int $id, array $data ): bool {
-		global $wpdb;
-		$updated = $wpdb->update( $this->table, $data, array( 'id' => $id ), null, array( '%d' ) );
+		$updated = $this->db->update( $this->table, $data, array( $this->pk => $id ), null, array( '%d' ) );
 		return $updated !== false;
 	}
 }

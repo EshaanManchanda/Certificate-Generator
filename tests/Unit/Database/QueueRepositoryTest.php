@@ -98,4 +98,18 @@ class QueueRepositoryTest extends TestCase {
 		$this->db->return_value = '3';
 		$this->assertSame( 3, $this->repo->count_by_status( 'pending' ) );
 	}
+
+	public function test_find_by_emails_returns_rows_for_all_addresses(): void {
+		$expected               = array(
+			array( 'recipient_email' => 'a@b.com', 'status' => 'sending', 'attempts' => 1 ),
+		);
+		$this->db->return_value = $expected;
+		$rows = $this->repo->find_by_emails( array( 'a@b.com' ) );
+		$this->assertSame( $expected, $rows );
+		$this->assertStringContainsString( 'recipient_email IN', $this->db->last_query );
+	}
+
+	public function test_find_by_emails_returns_empty_for_empty_input(): void {
+		$this->assertSame( array(), $this->repo->find_by_emails( array() ) );
+	}
 }

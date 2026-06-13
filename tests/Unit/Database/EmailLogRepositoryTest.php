@@ -84,6 +84,21 @@ class EmailLogRepositoryTest extends TestCase {
 		$this->assertSame( '2026-01-01 12:00:00', $this->db->last_insert['data']['sent_at'] );
 	}
 
+	public function test_find_by_emails_returns_rows_for_all_addresses(): void {
+		$expected               = array(
+			array( 'recipient_email' => 'a@b.com', 'status' => 'sent' ),
+			array( 'recipient_email' => 'c@d.com', 'status' => 'failed' ),
+		);
+		$this->db->return_value = $expected;
+		$rows = $this->repo->find_by_emails( array( 'a@b.com', 'c@d.com' ) );
+		$this->assertSame( $expected, $rows );
+		$this->assertStringContainsString( 'recipient_email IN', $this->db->last_query );
+	}
+
+	public function test_find_by_emails_returns_empty_for_empty_input(): void {
+		$this->assertSame( array(), $this->repo->find_by_emails( array() ) );
+	}
+
 	public function test_log_send_preserves_caller_supplied_sent_at(): void {
 		$this->db->return_value = 6;
 		$id = $this->repo->log_send( array(

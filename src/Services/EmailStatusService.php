@@ -3,10 +3,17 @@ declare(strict_types=1);
 
 namespace CertificateGenerator\Services;
 
+use CertificateGenerator\Core\Config;
+use CertificateGenerator\Database\EmailLogRepository;
+use CertificateGenerator\Database\QueueRepository;
+
 /**
  * Merged badge-status source: latest event across cert_email_logs + cert_email_queue.
  * Replaces the old logs-only, status='sent'-only lookup so the badge reflects the
  * true current state (Sent / Failed / Sending / Queued / NotSent).
+ *
+ * When CG_USE_REPOSITORIES is on, queries go through EmailLogRepository /
+ * QueueRepository. Flag off → legacy global $wpdb path (unchanged behaviour).
  */
 class EmailStatusService {
 
@@ -24,8 +31,6 @@ class EmailStatusService {
 	 *         Keyed by email address.
 	 */
 	public static function getBadgeStatuses( array $emails ): array {
-		global $wpdb;
-
 		$emails = array_values( array_unique( array_filter( $emails ) ) );
 		if ( empty( $emails ) ) {
 			return array();
@@ -36,42 +41,10 @@ class EmailStatusService {
 			array( 'status' => self::STATUS_NOT_SENT, 'last_error' => '', 'attempts' => 0 )
 		);
 
-		$log_table   = $wpdb->prefix . 'cert_email_logs';
-		$queue_table = $wpdb->prefix . 'cert_email_queue';
-		$ph          = implode( ',', array_fill( 0, count( $emails ), '%s' ) );
-
-		// Latest log entry per email (ORDER BY so first occurrence per email = most recent).
-		$log_rows = $wpdb->get_results( // phpcs:ignore WordPress.DB.DirectDatabaseQuery
-			$wpdb->prepare(
-				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared
-				"SELECT recipient_email, status, error_message, created_at FROM $log_table WHERE recipient_email IN ($ph) ORDER BY created_at DESC",
-				...$emails
-			),
-			ARRAY_A
-		);
-
-		$log_latest = array();
-		foreach ( $log_rows as $r ) {
-			if ( ! isset( $log_latest[ $r['recipient_email'] ] ) ) {
-				$log_latest[ $r['recipient_email'] ] = $r;
-			}
-		}
-
-		// Latest queue entry per email.
-		$queue_rows = $wpdb->get_results( // phpcs:ignore WordPress.DB.DirectDatabaseQuery
-			$wpdb->prepare(
-				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared
-				"SELECT recipient_email, status, error_message, attempts, updated_at FROM $queue_table WHERE recipient_email IN ($ph) ORDER BY updated_at DESC",
-				...$emails
-			),
-			ARRAY_A
-		);
-
-		$queue_latest = array();
-		foreach ( $queue_rows as $r ) {
-			if ( ! isset( $queue_latest[ $r['recipient_email'] ] ) ) {
-				$queue_latest[ $r['recipient_email'] ] = $r;
-			}
+		if ( Config::flag( 'CG_USE_REPOSITORIES' ) ) {
+			[ $log_latest, $queue_latest ] = self::fetch_via_repos( $emails );
+		} else {
+			[ $log_latest, $queue_latest ] = self::fetch_via_wpdb( $emails );
 		}
 
 		foreach ( $emails as $email ) {
@@ -123,5 +96,60 @@ class EmailStatusService {
 		}
 
 		return $result;
+	}
+
+	// ── Fetch helpers ─────────────────────────────────────────────────────────
+
+	/** @return array{array, array}  [log_latest_by_email, queue_latest_by_email] */
+	private static function fetch_via_repos( array $emails ): array {
+		$log_rows   = ( new EmailLogRepository() )->find_by_emails( $emails );
+		$queue_rows = ( new QueueRepository() )->find_by_emails( $emails );
+		return array(
+			self::key_first_by_email( $log_rows,   'recipient_email' ),
+			self::key_first_by_email( $queue_rows, 'recipient_email' ),
+		);
+	}
+
+	/** @return array{array, array} */
+	private static function fetch_via_wpdb( array $emails ): array {
+		global $wpdb;
+		$log_table   = $wpdb->prefix . 'cert_email_logs';
+		$queue_table = $wpdb->prefix . 'cert_email_queue';
+		$ph          = implode( ',', array_fill( 0, count( $emails ), '%s' ) );
+
+		$log_rows = $wpdb->get_results( // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+			$wpdb->prepare(
+				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared
+				"SELECT recipient_email, status, error_message, created_at FROM $log_table WHERE recipient_email IN ($ph) ORDER BY created_at DESC",
+				...$emails
+			),
+			ARRAY_A
+		) ?: array();
+
+		$queue_rows = $wpdb->get_results( // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+			$wpdb->prepare(
+				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared
+				"SELECT recipient_email, status, error_message, attempts, updated_at FROM $queue_table WHERE recipient_email IN ($ph) ORDER BY updated_at DESC",
+				...$emails
+			),
+			ARRAY_A
+		) ?: array();
+
+		return array(
+			self::key_first_by_email( $log_rows,   'recipient_email' ),
+			self::key_first_by_email( $queue_rows, 'recipient_email' ),
+		);
+	}
+
+	/** Deduplicate rows: keep first occurrence (newest) per email key. */
+	private static function key_first_by_email( array $rows, string $col ): array {
+		$map = array();
+		foreach ( $rows as $r ) {
+			$key = $r[ $col ] ?? '';
+			if ( $key !== '' && ! isset( $map[ $key ] ) ) {
+				$map[ $key ] = $r;
+			}
+		}
+		return $map;
 	}
 }

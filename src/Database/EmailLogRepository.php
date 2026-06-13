@@ -71,4 +71,26 @@ class EmailLogRepository extends Repository {
 	public function mark_failed( int $id, string $error = '' ): bool {
 		return $this->update( $id, array( 'status' => 'failed', 'error_message' => $error ) );
 	}
+
+	/**
+	 * Batch fetch all log rows for the given email addresses, ordered newest first.
+	 * Used by EmailStatusService to avoid N+1 queries.
+	 *
+	 * @param string[] $emails
+	 * @return array<int, array>
+	 */
+	public function find_by_emails( array $emails ): array {
+		if ( empty( $emails ) ) {
+			return array();
+		}
+		$ph = implode( ',', array_fill( 0, count( $emails ), '%s' ) );
+		return $this->db->get_results(
+			$this->db->prepare(
+				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+				"SELECT recipient_email, status, error_message, created_at FROM {$this->table} WHERE recipient_email IN ({$ph}) ORDER BY created_at DESC",
+				...$emails
+			),
+			\ARRAY_A
+		) ?: [];
+	}
 }

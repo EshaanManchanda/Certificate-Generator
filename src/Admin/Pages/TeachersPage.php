@@ -3,7 +3,9 @@ declare(strict_types=1);
 
 namespace CertificateGenerator\Admin\Pages;
 
+use CertificateGenerator\Core\Config;
 use CertificateGenerator\Database\CustomTables;
+use CertificateGenerator\Database\UserRepository;
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
@@ -79,14 +81,27 @@ class TeachersPage {
 			$where   .= ' AND certificate_type = %s';
 			$params[] = $cert_f; }
 
-		$count_sql = "SELECT COUNT(*) FROM $table WHERE $where"; // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
-		$total     = (int) ( $params ? $wpdb->get_var( $wpdb->prepare( $count_sql, ...$params ) ) : $wpdb->get_var( $count_sql ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
-		$offset    = ( $paged - 1 ) * $per_page;
-		$data_sql  = "SELECT * FROM $table WHERE $where ORDER BY $orderby $order LIMIT %d OFFSET %d"; // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
-		$rows      = $wpdb->get_results( $wpdb->prepare( $data_sql, ...array_merge( $params, array( $per_page, $offset ) ) ), ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+		$offset  = ( $paged - 1 ) * $per_page;
+		$filters = array_filter( array(
+			'search'           => $search,
+			'school_name'      => $school_f,
+			'certificate_type' => $cert_f,
+		) );
 
-		$schools    = $wpdb->get_col( "SELECT DISTINCT school_name FROM $table WHERE school_name != '' ORDER BY school_name" ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
-		$cert_types = $wpdb->get_col( "SELECT DISTINCT certificate_type FROM $table WHERE certificate_type != '' ORDER BY certificate_type" ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+		if ( Config::flag( 'CG_USE_REPOSITORIES' ) ) {
+			$repo       = new UserRepository( 'teachers' );
+			$total      = $repo->count_filtered( $filters );
+			$rows       = $repo->find_page( $filters, $orderby, $order, $per_page, $offset );
+			$schools    = $repo->distinct_column( 'school_name' );
+			$cert_types = $repo->distinct_column( 'certificate_type' );
+		} else {
+			$count_sql  = "SELECT COUNT(*) FROM $table WHERE $where"; // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+			$total      = (int) ( $params ? $wpdb->get_var( $wpdb->prepare( $count_sql, ...$params ) ) : $wpdb->get_var( $count_sql ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+			$data_sql   = "SELECT * FROM $table WHERE $where ORDER BY $orderby $order LIMIT %d OFFSET %d"; // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+			$rows       = $wpdb->get_results( $wpdb->prepare( $data_sql, ...array_merge( $params, array( $per_page, $offset ) ) ), ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+			$schools    = $wpdb->get_col( "SELECT DISTINCT school_name FROM $table WHERE school_name != '' ORDER BY school_name" ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+			$cert_types = $wpdb->get_col( "SELECT DISTINCT certificate_type FROM $table WHERE certificate_type != '' ORDER BY certificate_type" ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+		}
 
 		$total_pages = (int) ceil( $total / $per_page );
 		$list_url    = admin_url( 'admin.php?page=' . $this->slug );

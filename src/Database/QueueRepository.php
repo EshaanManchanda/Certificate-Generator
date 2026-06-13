@@ -81,4 +81,26 @@ class QueueRepository extends Repository {
 			)
 		);
 	}
+
+	/**
+	 * Batch fetch all queue rows for the given email addresses, ordered by updated_at DESC.
+	 * Used by EmailStatusService to avoid N+1 queries.
+	 *
+	 * @param string[] $emails
+	 * @return array<int, array>
+	 */
+	public function find_by_emails( array $emails ): array {
+		if ( empty( $emails ) ) {
+			return array();
+		}
+		$ph = implode( ',', array_fill( 0, count( $emails ), '%s' ) );
+		return $this->db->get_results(
+			$this->db->prepare(
+				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+				"SELECT recipient_email, status, error_message, attempts, updated_at FROM {$this->table} WHERE recipient_email IN ({$ph}) ORDER BY updated_at DESC",
+				...$emails
+			),
+			\ARRAY_A
+		) ?: [];
+	}
 }

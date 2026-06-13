@@ -64,6 +64,11 @@ class WpdbFake {
 		return (int) ( $this->return_value ?? 1 );
 	}
 
+	public function get_col( string $sql, int $col_offset = 0 ): array {
+		$this->last_query = $sql;
+		return is_array( $this->return_value ) ? $this->return_value : [];
+	}
+
 	public function esc_like( string $text ): string {
 		return addcslashes( $text, '_%\\' );
 	}

@@ -1,0 +1,50 @@
+<?xml version="1.0"?>
+<ruleset name="Certificate-Generator">
+    <description>PHP CodeSniffer rules for Certificate Generator v7</description>
+
+    <!-- Scan these paths -->
+    <file>certificate-generator.php</file>
+    <file>src/</file>
+    <file>includes/</file>
+
+    <!-- Exclude third-party and generated code -->
+    <exclude-pattern>lib/fpdf/*</exclude-pattern>
+    <exclude-pattern>vendor/*</exclude-pattern>
+    <exclude-pattern>_dev/*</exclude-pattern>
+    <exclude-pattern>assets/*</exclude-pattern>
+    <exclude-pattern>coverage/*</exclude-pattern>
+
+    <!-- PHP 8.0+ compat -->
+    <config name="testVersion" value="8.0-"/>
+    <rule ref="PHPCompatibilityWP"/>
+
+    <!-- WordPress coding standards -->
+    <rule ref="WordPress">
+        <!-- Allow short array syntax [] -->
+        <exclude name="Generic.Arrays.DisallowShortArraySyntax"/>
+        <!-- Allow Yoda condition opt-out in new code -->
+        <exclude name="WordPress.PHP.YodaConditions.NotYoda"/>
+        <!-- Allow shorter files without file doc blocks in small helpers -->
+        <exclude name="Squiz.Commenting.FileComment.Missing"/>
+    </rule>
+
+    <!-- Enforce text domain -->
+    <rule ref="WordPress.WP.I18n">
+        <properties>
+            <property name="text_domain" type="array" value="certificate-generator"/>
+        </properties>
+    </rule>
+
+    <!-- Tabs for indentation (WordPress standard) -->
+    <rule ref="Generic.WhiteSpace.DisallowSpaceIndent"/>
+    <rule ref="Generic.WhiteSpace.ScopeIndent">
+        <properties>
+            <property name="indent" value="4"/>
+            <property name="tabIndent" value="true"/>
+        </properties>
+    </rule>
+
+    <arg name="extensions" value="php"/>
+    <arg name="colors"/>
+    <arg value="sp"/>
+</ruleset>

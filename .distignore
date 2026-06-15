@@ -1,0 +1,25 @@
+# Files/directories excluded from the release zip.
+.git
+.gitattributes
+.distignore
+.opencodeignore
+_dev/
+tests/
+coverage/
+vendor/
+composer.json
+composer.lock
+phpcs.xml
+phpstan.neon
+phpunit.xml
+*.zip
+CLAUDE.md
+.claude/
+docs/
+# Dev tooling
+.playwright-mcp/
+.code-review-graph/
+.phpunit.result.cache
+# Loose dev docs
+INTEGRATION_FUNCTIONS.md
+README.md

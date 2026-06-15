@@ -51,3 +51,13 @@ wp-content/uploads/cg-qr-codes/
 CLAUDE.md
 .claude/
 .code-review-graph/
+
+# Dev tooling / generated artifacts
+.playwright-mcp/
+.phpunit.result.cache
+lib/phpqrcode/qr_*.png-errors.txt
+
+# Local working data (PII — never commit)
+*.csv
+*.eml
+plan.md

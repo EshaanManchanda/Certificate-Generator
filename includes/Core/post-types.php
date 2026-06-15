@@ -13,49 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 require_once __DIR__ . '/../Services/certificate-search.php';
 require_once __DIR__ . '/../Admin/columns.php';
-// Function to Register Custom Post Types
-function register_custom_post_type( $type, $singular, $plural, $supports = array( 'title', 'custom-fields' ) ) {
-	register_post_type(
-		$type,
-		array(
-			'labels'       => array(
-				'name'               => __( $plural ),
-				'singular_name'      => __( $singular ),
-				'add_new'            => __( 'Add New ' . $singular ),
-				'add_new_item'       => __( 'Add New ' . $singular ),
-				'edit_item'          => __( 'Edit ' . $singular ),
-				'new_item'           => __( 'New ' . $singular ),
-				'view_item'          => __( 'View ' . $singular ),
-				'search_items'       => __( 'Search ' . $plural ),
-				'not_found'          => __( 'No ' . strtolower( $plural ) . ' found' ),
-				'not_found_in_trash' => __( 'No ' . strtolower( $plural ) . ' found in Trash' ),
-				'all_items'          => __( 'All ' . $plural ),
-				'menu_name'          => __( $plural ),
-			),
-			'public'       => true,
-			'has_archive'  => true,
-			'supports'     => &$supports,
-			'show_ui'      => true,
-			'show_in_menu' => true,
-			'show_in_rest' => true,
-		)
-	);
-}
 
-// Register All Custom Post Types
-// NOTE: students/teachers/schools removed — plugin now uses wp_cg_* SQL tables exclusively.
-// NOTE: certificates CPT hidden from admin — templates managed via SQL-backed Templates page.
-function register_custom_post_types() {
-	register_custom_post_type( 'certificates', 'Certificate', 'Certificates' );
-	// Hide certificates CPT from admin menu (SQL-backed Templates page is primary)
-	add_action(
-		'admin_menu',
-		function () {
-			remove_menu_page( 'edit.php?post_type=certificates' );
-		},
-		999
-	);
-}
 
 /**
  * Sync Certificate-Generator post meta to WP Dynamic Tags on save.
@@ -222,17 +180,6 @@ function cg_sync_extra_fields_to_sql( int $post_id ): void {
 // CPT extra-fields sync hooks removed — SQL admin pages write extra_fields directly on save.
 
 // Add Email Logs Meta Box for Certificates
-function add_certificate_email_logs_meta_box() {
-	add_meta_box(
-		'certificate_email_logs_meta_box',
-		'Email Logs',
-		'render_certificate_email_logs',
-		'certificates',
-		'normal',
-		'low'
-	);
-}
-add_action( 'add_meta_boxes', 'add_certificate_email_logs_meta_box' );
 
 // Add Email Status Meta Box for Students, Teachers, Schools
 function add_email_status_meta_box() {
@@ -289,24 +236,13 @@ function render_email_status_meta_box( $post ) {
 
 		// Check certificate template
 		if ( ! empty( $certificate_type ) ) {
-			// Check if template exists
-			$template_query = new WP_Query(
-				array(
-					'post_type'      => 'certificates',
-					'posts_per_page' => 1,
-					'meta_query'     => array(
-						array(
-							'key'     => 'certificate_type',
-							'value'   => $certificate_type,
-							'compare' => '=',
-						),
-					),
-				)
-			);
+			$template_exists = function_exists( 'cg_select_certificate_template' )
+				? (bool) cg_select_certificate_template( $certificate_type, '', false )
+				: false;
 
 			echo '<div class="email-status-item">';
 			echo '<label><strong>' . __( 'Certificate Template:', 'certificate-generator' ) . '</strong></label>';
-			if ( $template_query->have_posts() ) {
+			if ( $template_exists ) {
 				echo '<span class="status-value template-found">';
 				echo '<span class="dashicons dashicons-yes-alt"></span>';
 				printf( __( 'Template found for "%s"', 'certificate-generator' ), esc_html( $certificate_type ) );
@@ -508,7 +444,6 @@ function render_certificate_email_logs( $post ) {
 	echo '</table>';
 	echo '<p><a href="' . esc_url( admin_url( 'admin.php?page=certificate-email-logs' ) ) . '" class="button">' . esc_html__( 'View All Logs', 'certificate-generator' ) . '</a></p>';
 }
-add_action( 'init', 'register_custom_post_types' );
 
 
 // Define Fields for Students

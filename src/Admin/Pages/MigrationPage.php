@@ -81,24 +81,30 @@ class MigrationPage {
 		}
 		$all_tables_exist = ! in_array( false, $table_status, true );
 
+		global $wpdb;
+
 		$migration_completed = get_option( 'cg_cpt_to_sql_migration_completed', false );
 		$migration_stats     = get_option( 'cg_cpt_to_sql_migration_stats', array() );
 		$cpts_cleaned        = get_option( 'cg_cpts_cleaned_up', false );
 
-		// Count CPT records
-		$student_counts  = wp_count_posts( 'students' );
-		$teacher_counts  = wp_count_posts( 'teachers' );
-		$school_counts   = wp_count_posts( 'schools' );
-		$template_counts = wp_count_posts( 'certificates' );
-		$cpt_counts      = array(
-			'students'  => isset( $student_counts->publish ) ? (int) $student_counts->publish : 0,
-			'teachers'  => isset( $teacher_counts->publish ) ? (int) $teacher_counts->publish : 0,
-			'schools'   => isset( $school_counts->publish ) ? (int) $school_counts->publish : 0,
-			'templates' => isset( $template_counts->publish ) ? (int) $template_counts->publish : 0,
+		// Count remaining legacy CPT posts directly from DB (CPTs are no longer registered).
+		$remaining_cpt_certs = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$wpdb->posts} WHERE post_type = 'certificates'" );
+
+		// Reset the cleaned flag if CPT posts crept back (e.g. re-created by old dual-write).
+		if ( $cpts_cleaned && $remaining_cpt_certs > 0 ) {
+			delete_option( 'cg_cpts_cleaned_up' );
+			$cpts_cleaned = false;
+		}
+
+		// CPT counts: CPTs are no longer registered — always 0.
+		$cpt_counts = array(
+			'students'  => 0,
+			'teachers'  => 0,
+			'schools'   => 0,
+			'templates' => $remaining_cpt_certs,
 		);
 
 		// Count SQL records
-		global $wpdb;
 		$sql_counts = array();
 		foreach ( $tables->get_all_tables() as $name => $table ) {
 			if ( in_array( $name, array( 'students', 'teachers', 'schools', 'certificate_templates', 'certificates', 'email_logs' ) ) ) {
@@ -228,19 +234,25 @@ class MigrationPage {
 			<div class="card" style="min-height: auto; margin-bottom: 20px;">
 				<h2>Step 3: Clean Up CPT Data (Optional)</h2>
 
-				<?php if ( $cpts_cleaned ) : ?>
+				<?php if ( $cpts_cleaned && $remaining_cpt_certs === 0 ) : ?>
 					<div class="notice notice-success inline">
 						<p>✓ CPT data has been cleaned up. Plugin uses SQL tables exclusively.</p>
 					</div>
-				<?php elseif ( $migration_completed ) : ?>
-					<div class="notice notice-info inline">
-						<p>After verifying all data migrated correctly, click below to remove CPT data.</p>
-					</div>
+				<?php elseif ( $migration_completed || $remaining_cpt_certs > 0 ) : ?>
+					<?php if ( $remaining_cpt_certs > 0 ) : ?>
+						<div class="notice notice-warning inline">
+							<p>⚠ <strong><?php echo number_format( $remaining_cpt_certs ); ?></strong> legacy <code>certificates</code> CPT post(s) still in the database. Run cleanup to remove them.</p>
+						</div>
+					<?php else : ?>
+						<div class="notice notice-info inline">
+							<p>After verifying all data migrated correctly, click below to remove CPT data.</p>
+						</div>
+					<?php endif; ?>
 					<form method="post" style="margin-top: 15px;">
 						<?php wp_nonce_field( 'cg_cleanup_cpts' ); ?>
 						<button type="submit" name="cg_cleanup_cpts" class="button button-primary"
-								onclick="return confirm('WARNING: This will DELETE all CPT data. Make sure migration is complete. Continue?');">
-							Clean Up CPT Data (Irreversible)
+								onclick="return confirm('WARNING: This will DELETE all legacy CPT posts. SQL data is unaffected. Continue?');">
+							Clean Up CPT Data
 						</button>
 					</form>
 				<?php else : ?>

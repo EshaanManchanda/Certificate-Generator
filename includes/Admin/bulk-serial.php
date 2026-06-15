@@ -49,51 +49,69 @@ class CG_Bulk_Serial_Generator {
 		);
 	}
 
+	/**
+	 * Get SQL entity table name and check it exists.
+	 *
+	 * @param string $entity students|teachers|schools
+	 * @return string|null Table name or null when unavailable.
+	 */
+	private function get_entity_table( string $entity ): ?string {
+		if ( ! class_exists( '\CertificateGenerator\Database\CustomTables' ) ) {
+			return null;
+		}
+		global $wpdb;
+		$tbl = \CertificateGenerator\Database\CustomTables::instance()->get_table( $entity );
+		if ( ! $tbl || $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $tbl ) ) !== $tbl ) {
+			return null;
+		}
+		return $tbl;
+	}
+
+	/**
+	 * Aggregate serial stats across cg_students / cg_teachers / cg_schools.
+	 *
+	 * @return array{ total_with_serial: int, total_without_serial: int, total_posts: int }
+	 */
+	private function get_serial_stats(): array {
+		global $wpdb;
+		$stats = array(
+			'total_with_serial'    => 0,
+			'total_without_serial' => 0,
+			'total_posts'          => 0,
+		);
+
+		foreach ( array( 'students', 'teachers', 'schools' ) as $entity ) {
+			$tbl = $this->get_entity_table( $entity );
+			if ( ! $tbl ) {
+				continue;
+			}
+			$with    = (int) $wpdb->get_var( "SELECT COUNT(*) FROM $tbl WHERE serial_number IS NOT NULL AND serial_number != ''" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+			$without = (int) $wpdb->get_var( "SELECT COUNT(*) FROM $tbl WHERE serial_number IS NULL OR serial_number = ''" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+			$stats['total_with_serial']    += $with;
+			$stats['total_without_serial'] += $without;
+			$stats['total_posts']          += $with + $without;
+		}
+
+		return $stats;
+	}
+
 	public function render_bulk_serial_page() {
 		if ( ! current_user_can( 'manage_options' ) ) {
 			return;
 		}
 
 		global $wpdb;
-		$table_name   = $wpdb->prefix . 'certificate_generator';
-		$table_exists = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table_name ) ) === $table_name;
 
-		$stats = array(
-			'total_without_serial' => 0,
-			'total_with_serial'    => 0,
-			'total_posts'          => 0,
-		);
+		$stats = $this->get_serial_stats();
 
-		if ( $table_exists ) {
-			$stats['total_without_serial'] = (int) $wpdb->get_var( "SELECT COUNT(*) FROM $table_name WHERE (serial_number IS NULL OR serial_number = '')" );
-			$stats['total_with_serial']    = (int) $wpdb->get_var( "SELECT COUNT(*) FROM $table_name WHERE serial_number IS NOT NULL AND serial_number != ''" );
-		}
-
-		$post_types = array( 'students', 'teachers', 'schools' );
-		foreach ( $post_types as $pt ) {
-			$count                 = wp_count_posts( $pt );
-			$stats['total_posts'] += isset( $count->publish ) ? (int) $count->publish : 0;
-		}
-
-		// Count posts that have serial numbers in post meta
-		$posts_with_serial             = (int) $wpdb->get_var(
-			"SELECT COUNT(DISTINCT pm.post_id) FROM {$wpdb->postmeta} pm
-             INNER JOIN {$wpdb->posts} p ON p.ID = pm.post_id
-             WHERE pm.meta_key = 'certificate_serial_number' AND pm.meta_value != ''
-             AND p.post_status = 'publish' AND p.post_type IN ('students','teachers','schools')"
-		);
-		$stats['total_with_serial']    = max( $stats['total_with_serial'], $posts_with_serial );
-		$stats['total_without_serial'] = max( 0, $stats['total_posts'] - $stats['total_with_serial'] );
-
-		// Fetch recent serials from DB table
+		// Recent serials from wp_cg_certificates (recipient_name column).
 		$recent_serials = array();
-		if ( $table_exists ) {
-			$recent_serials = $wpdb->get_results(
-				"SELECT id, student_name, serial_number, certificate_type, generated_via, issued_at
-                 FROM $table_name
-                 WHERE serial_number IS NOT NULL AND serial_number != ''
-                 ORDER BY id DESC LIMIT 50"
-			);
+		if ( class_exists( '\CertificateGenerator\Database\CustomTables' ) ) {
+			$cert_table = \CertificateGenerator\Database\CustomTables::instance()->get_table( 'certificates' );
+			if ( $cert_table && $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $cert_table ) ) === $cert_table ) {
+				$sql            = "SELECT id, recipient_name, serial_number, certificate_type, generated_via, issued_at FROM $cert_table WHERE serial_number IS NOT NULL AND serial_number != '' ORDER BY id DESC LIMIT 50"; // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+				$recent_serials = $wpdb->get_results( $sql ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+			}
 		}
 		?>
 		<div class="wrap cg-bulk-serial-page">
@@ -102,7 +120,7 @@ class CG_Bulk_Serial_Generator {
 			<div class="cg-bulk-stats">
 				<div class="cg-bulk-stat">
 					<span class="cg-bulk-stat-value"><?php echo number_format( $stats['total_posts'] ); ?></span>
-					<span class="cg-bulk-stat-label">Total Certificate Posts</span>
+					<span class="cg-bulk-stat-label">Total Certificate Records</span>
 				</div>
 				<div class="cg-bulk-stat">
 					<span class="cg-bulk-stat-value"><?php echo number_format( $stats['total_with_serial'] ); ?></span>
@@ -117,7 +135,7 @@ class CG_Bulk_Serial_Generator {
 			<div class="cg-bulk-form-section">
 				<h2>Generate Serial Numbers</h2>
 				<p>Generate unique serial numbers for all existing certificates that don't have one yet.</p>
-				
+
 				<div class="cg-bulk-options">
 					<label>
 						<input type="checkbox" id="cg-bulk-students" checked> Include Students
@@ -171,11 +189,11 @@ class CG_Bulk_Serial_Generator {
 							<?php foreach ( $recent_serials as $row ) : ?>
 								<tr>
 									<td><?php echo esc_html( $row->id ); ?></td>
-									<td><?php echo esc_html( $row->student_name ); ?></td>
-									<td><?php echo esc_html( $row->certificate_type ?: '—' ); ?></td>
+									<td><?php echo esc_html( $row->recipient_name ); ?></td>
+									<td><?php echo esc_html( ! empty( $row->certificate_type ) ? $row->certificate_type : '—' ); ?></td>
 									<td><code><?php echo esc_html( $row->serial_number ); ?></code></td>
-									<td><?php echo esc_html( ucfirst( $row->generated_via ?: 'manual' ) ); ?></td>
-									<td><?php echo esc_html( cg_format_date( $row->issued_at, true ) ?: '—' ); ?></td>
+									<td><?php echo esc_html( ucfirst( ! empty( $row->generated_via ) ? $row->generated_via : 'manual' ) ); ?></td>
+									<td><?php echo esc_html( cg_format_date( $row->issued_at, true ) ? cg_format_date( $row->issued_at, true ) : '—' ); ?></td>
 								</tr>
 							<?php endforeach; ?>
 						<?php endif; ?>
@@ -186,6 +204,14 @@ class CG_Bulk_Serial_Generator {
 		<?php
 	}
 
+	/**
+	 * AJAX handler: generate serial numbers for all entity rows missing one.
+	 *
+	 * Reads entity data from wp_cg_students/teachers/schools SQL tables.
+	 * Nonce: cg_bulk_serial_nonce.
+	 *
+	 * @return void Outputs JSON and exits.
+	 */
 	public function ajax_bulk_generate() {
 		check_ajax_referer( 'cg_bulk_serial_nonce', 'nonce' );
 		if ( ! current_user_can( 'manage_options' ) ) {
@@ -207,11 +233,15 @@ class CG_Bulk_Serial_Generator {
 			wp_send_json_error( 'No post types selected' );
 		}
 
+		global $wpdb;
+
 		$serial_gen = null;
 		if ( class_exists( 'CG_Serial_Number_Generator' ) ) {
 			$serial_gen = CG_Serial_Number_Generator::get_instance();
 		}
 
+		// Generation results accumulator.
+		/** @var array{ success: int, skipped: int, errors: int, details: array<int, array<string,mixed>> } */
 		$results = array(
 			'success' => 0,
 			'skipped' => 0,
@@ -219,28 +249,34 @@ class CG_Bulk_Serial_Generator {
 			'details' => array(),
 		);
 
+		// Name column per entity type.
+		$name_cols = array(
+			'students' => 'student_name',
+			'teachers' => 'teacher_name',
+			'schools'  => 'school_name',
+		);
+
 		foreach ( $post_types as $post_type ) {
-			$posts = get_posts(
-				array(
-					'post_type'      => $post_type,
-					'posts_per_page' => -1,
-					'post_status'    => 'publish',
-					'fields'         => 'ids',
-				)
-			);
+			$tbl = $this->get_entity_table( $post_type );
+			if ( ! $tbl ) {
+				++$results['errors'];
+				continue;
+			}
 
-			foreach ( $posts as $post_id ) {
-				$existing_serial = get_post_meta( $post_id, 'certificate_serial_number', true );
-				if ( ! empty( $existing_serial ) ) {
-					++$results['skipped'];
-					continue;
-				}
+			$name_col = $name_cols[ $post_type ];
 
-				$cert_type = get_post_meta( $post_id, 'certificate_type', true );
-				$name_key  = ( $post_type === 'teachers' ) ? 'teacher_name' : ( ( $post_type === 'schools' ) ? 'school_name' : 'student_name' );
-				$name      = get_post_meta( $post_id, $name_key, true ) ?: get_the_title( $post_id );
+			// Fetch only rows missing a serial number.
+			$sql  = "SELECT id, wp_post_id, $name_col AS entity_name, email, certificate_type FROM $tbl WHERE serial_number IS NULL OR serial_number = ''"; // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+			$rows = $wpdb->get_results( $sql, ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 
-				// Check if this student+type already has a serial in the DB table
+			foreach ( $rows as $row ) {
+				$entity_id  = (int) $row['id'];
+				$name       = sanitize_text_field( $row['entity_name'] ?? '' );
+				$cert_type  = sanitize_text_field( $row['certificate_type'] ?? '' );
+				$email      = sanitize_email( $row['email'] ?? '' );
+				$wp_post_id = (int) ( $row['wp_post_id'] ?? 0 );
+
+				// Check if this name+type already has a serial in entity table.
 				$serial = '';
 				if ( function_exists( 'cg_find_existing_serial' ) && $name && $cert_type ) {
 					$serial = cg_find_existing_serial( $name, $cert_type );
@@ -248,69 +284,82 @@ class CG_Bulk_Serial_Generator {
 
 				if ( empty( $serial ) ) {
 					if ( $serial_gen ) {
-						// Prepare student data for updating student table
-						$student_data_for_serial = array(
-							'email'        => get_post_meta( $post_id, 'email', true ) ?: '',
+						$student_data = array(
+							'email'        => $email,
 							'student_name' => $name,
 						);
-						$serial                  = $serial_gen->generate( $cert_type, $student_data_for_serial );
+						$serial       = $serial_gen->generate( $cert_type, $student_data );
 					} else {
-						$serial = 'CERT-' . str_pad( mt_rand( 1, 999999 ), 6, '0', STR_PAD_LEFT );
+						$serial = 'CERT-' . str_pad( (string) wp_rand( 1, 999999 ), 6, '0', STR_PAD_LEFT );
 					}
 				}
 
-				if ( ! empty( $serial ) ) {
-					update_post_meta( $post_id, 'certificate_serial_number', $serial );
-					update_post_meta( $post_id, 'certificate_issued_at', current_time( 'mysql' ) );
-
-					// Also persist to certificate_generator table for verification
-					if ( function_exists( 'cg_insert_certificate_record' ) ) {
-						cg_insert_certificate_record(
-							array(
-								$name_key          => $name,
-								'certificate_type' => $cert_type,
-							),
-							$serial,
-							'bulk'
-						);
-					}
-
-					++$results['success'];
-					$results['details'][] = array(
-						'post_id'   => $post_id,
-						'post_type' => $post_type,
-						'name'      => get_the_title( $post_id ),
-						'serial'    => $serial,
-						'issued_at' => current_time( 'mysql' ),
-					);
-				} else {
+				if ( empty( $serial ) ) {
 					++$results['errors'];
+					continue;
 				}
+
+				// Write serial to the entity SQL row directly (covers wp_post_id=0 rows too).
+				$wpdb->update( // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+					$tbl,
+					array(
+						'serial_number' => $serial,
+						'issue_date'    => current_time( 'mysql' ),
+					),
+					array( 'id' => $entity_id ),
+					array( '%s', '%s' ),
+					array( '%d' )
+				);
+
+				// Persist to wp_cg_certificates (and legacy table via cg_insert_certificate_record).
+				if ( function_exists( 'cg_insert_certificate_record' ) ) {
+					cg_insert_certificate_record(
+						array(
+							$name_col          => $name,
+							'email'            => $email,
+							'certificate_type' => $cert_type,
+							'recipient_type'   => $post_type,
+							'wp_post_id'       => $wp_post_id,
+						),
+						$serial,
+						'bulk'
+					);
+				}
+
+				++$results['success'];
+				$results['details'][] = array(
+					'entity_id' => $entity_id,
+					'post_type' => $post_type,
+					'name'      => $name,
+					'serial'    => $serial,
+					'issued_at' => current_time( 'mysql' ),
+				);
 			}
 		}
 
 		wp_send_json_success( $results );
 	}
 
+	/**
+	 * AJAX handler: return current with/without serial counts from SQL entity tables.
+	 *
+	 * Nonce: cg_bulk_serial_nonce.
+	 *
+	 * @return void Outputs JSON and exits.
+	 */
 	public function ajax_get_status() {
 		check_ajax_referer( 'cg_bulk_serial_nonce', 'nonce' );
 		if ( ! current_user_can( 'manage_options' ) ) {
 			wp_send_json_error( 'Unauthorized' );
 		}
 
-		global $wpdb;
-		$table_name   = $wpdb->prefix . 'certificate_generator';
-		$table_exists = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table_name ) ) === $table_name;
+		$stats = $this->get_serial_stats();
 
-		$stats = array(
-			'total_without' => 0,
-			'total_with'    => 0,
+		wp_send_json_success(
+			array(
+				'total_without' => $stats['total_without_serial'],
+				'total_with'    => $stats['total_with_serial'],
+			)
 		);
-		if ( $table_exists ) {
-			$stats['total_without'] = (int) $wpdb->get_var( "SELECT COUNT(*) FROM $table_name WHERE (serial_number IS NULL OR serial_number = '')" );
-			$stats['total_with']    = (int) $wpdb->get_var( "SELECT COUNT(*) FROM $table_name WHERE serial_number IS NOT NULL AND serial_number != ''" );
-		}
-
-		wp_send_json_success( $stats );
 	}
 }

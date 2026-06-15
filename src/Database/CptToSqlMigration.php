@@ -40,9 +40,6 @@ class CptToSqlMigration {
 		// 3. Migrate Teachers (links to schools by name)
 		$this->migrate_teachers();
 
-		// 4. Migrate Certificate Templates
-		$this->migrate_templates();
-
 		// 5. Migrate Existing Certificates
 		$this->migrate_certificates();
 

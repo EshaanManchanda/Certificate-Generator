@@ -146,39 +146,6 @@ class CG_QR_Code_Generator {
 	}
 
 	public function register_template_meta_fields() {
-		add_action(
-			'add_meta_boxes',
-			function () {
-				add_meta_box(
-					'cg_qr_serial_settings',
-					'QR Code & Serial Number Settings',
-					array( $this, 'render_qr_serial_meta_box' ),
-					'certificates',
-					'normal',
-					'high'
-				);
-
-				add_meta_box(
-					'cg_expiration_settings',
-					'Certificate Expiration Settings',
-					array( $this, 'render_expiration_meta_box' ),
-					'certificates',
-					'side',
-					'default'
-				);
-
-				add_meta_box(
-					'cg_position_preview',
-					'QR & Serial Position Preview',
-					array( $this, 'render_position_preview' ),
-					'certificates',
-					'normal',
-					'default'
-				);
-			}
-		);
-
-		add_action( 'save_post_certificates', array( $this, 'save_qr_serial_settings' ) );
 		add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_draggable_assets' ) );
 	}
 

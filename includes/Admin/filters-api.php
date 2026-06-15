@@ -282,11 +282,12 @@ function certificate_generator_get_filtered_recipients( $filters = array() ) {
                                 el.status AS email_status, el.sent_at AS last_sent
                          FROM $tbl t  -- phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
                          LEFT JOIN (
-                             SELECT certificate_id,
+                             SELECT recipient_email AS email,
                                     MAX(CASE WHEN status = 'sent' THEN 'sent' ELSE NULL END) AS status,
                                     MAX(sent_at) AS sent_at
-                             FROM $email_logs GROUP BY certificate_id -- phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
-                         ) el ON t.wp_post_id = el.certificate_id
+                             FROM $email_logs -- phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+                             GROUP BY recipient_email
+                         ) el ON t.email = el.email
                          WHERE $where_sql"; // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 		}
 
@@ -324,7 +325,9 @@ function certificate_generator_get_filtered_recipients( $filters = array() ) {
 		}
 	}
 
-	// CPT fallback — original query
+	// CPT fallback — only reachable when CustomTables class is absent (misconfigured/broken install).
+	// send_email opt-out cannot be enforced here: the flag lives in wp_cg_* SQL tables, not postmeta.
+	// In a normal install this path is never hit; CustomTables is always loaded.
 	$query = "SELECT DISTINCT p.ID as post_id, p.post_title, p.post_type,
                 pm_email.meta_value as email, pm_name.meta_value as name,
                 pm_school.meta_value as school_name, pm_type.meta_value as certificate_type,
@@ -452,10 +455,11 @@ function certificate_generator_count_filtered_recipients( $filters = array() ) {
                                 el.status AS email_status
                          FROM $tbl t  -- phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
                          LEFT JOIN (
-                             SELECT certificate_id,
+                             SELECT recipient_email AS email,
                                     MAX(CASE WHEN status = 'sent' THEN 'sent' ELSE NULL END) AS status
-                             FROM $email_logs GROUP BY certificate_id -- phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
-                         ) el ON t.wp_post_id = el.certificate_id
+                             FROM $email_logs -- phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+                             GROUP BY recipient_email
+                         ) el ON t.email = el.email
                          WHERE $where_sql"; // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 		}
 

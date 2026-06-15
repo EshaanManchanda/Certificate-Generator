@@ -74,10 +74,10 @@ function cg_render_documentation_page() {
 	$cg_table        = $wpdb->prefix . 'certificate_generator';
 	$has_cg_table    = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $cg_table ) ) === $cg_table;
 	$cert_count      = $has_cg_table ? (int) $wpdb->get_var( "SELECT COUNT(*) FROM $cg_table" ) : 0;
-	$templates_obj   = wp_count_posts( 'certificates' );
-	$templates_count = isset( $templates_obj->publish ) ? (int) $templates_obj->publish : 0;
-	$students_obj    = wp_count_posts( 'students' );
-	$students_count  = isset( $students_obj->publish ) ? (int) $students_obj->publish : 0;
+	$tpl_table       = $wpdb->prefix . 'cg_certificate_templates';
+	$templates_count = (int) $wpdb->get_var( "SELECT COUNT(*) FROM $tpl_table WHERE status = 'published'" );
+	$students_table  = $wpdb->prefix . 'cg_students';
+	$students_count  = (int) $wpdb->get_var( "SELECT COUNT(*) FROM $students_table" );
 
 	$steps = array(
 		array(

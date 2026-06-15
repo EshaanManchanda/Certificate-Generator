@@ -16,8 +16,8 @@ class SettingsService {
 		'cg_email_transport'     => 'wp_mail',
 		'cg_email_from_name'     => '',
 		'cg_email_from_email'    => '',
-		'cg_email_subject'       => 'Your Certificate: {certificate_title}',
-		'cg_email_body'          => '',
+		'cg_email_subject'       => 'Your Certificate is Ready: {certificate_title}',
+		'cg_email_body'          => '<p>Dear {name},</p><p>Congratulations! Your certificate for <strong>{certificate_title}</strong> is ready.</p><p>You can view and download your certificate using the link below:</p><p><a href="{result_link}">View Certificate</a></p><p>Thank you,<br>The GEMA Team</p>',
 		'cg_smtp_host'           => '',
 		'cg_smtp_port'           => 587,
 		'cg_smtp_username'       => '',
@@ -106,6 +106,56 @@ class SettingsService {
 			'saved'  => $saved,
 			'errors' => $errors,
 		);
+	}
+
+	/**
+	 * Seed default option values on plugin activation.
+	 * Uses add_option() so existing user customizations are never overwritten.
+	 */
+	public static function seed_defaults(): void {
+		foreach ( self::$defaults as $key => $value ) {
+			if ( $value !== '' ) {
+				add_option( $key, $value, '', 'no' );
+			}
+		}
+
+		self::seed_per_type_email_defaults();
+	}
+
+	/**
+	 * Seed per-type (students/teachers/schools) email template defaults into
+	 * certificate_generator_settings_email. Only fills missing keys so existing
+	 * user edits are never overwritten.
+	 */
+	public static function seed_per_type_email_defaults(): void {
+		$existing = get_option( 'certificate_generator_settings_email', array() );
+		if ( ! is_array( $existing ) ) {
+			$existing = array();
+		}
+
+		$changed = false;
+		foreach ( array( 'students', 'teachers', 'schools' ) as $type ) {
+			$singular = rtrim( $type, 's' );
+			$label    = ucfirst( $singular );
+
+			$defaults = array(
+				$type . '_email_subject'            => "Your {$label} Certificate is Ready: {certificate_title}",
+				$type . '_email_title'              => "Your {$label} Certificate is Ready",
+				$type . '_email_message'            => "<p>Dear {name},</p>\n<p>Congratulations! Your <strong>{certificate_title}</strong> certificate is ready.</p>\n<p><a href=\"{result_link}\">View Your Results Online</a></p>\n<p>Thank you!</p>",
+				$type . '_email_attach_certificate' => '1',
+			);
+
+			foreach ( $defaults as $key => $value ) {
+				if ( ! isset( $existing[ $key ] ) || $existing[ $key ] === '' ) {
+					$existing[ $key ] = $value;
+					$changed          = true;
+				}
+			}
+		}
+
+		if ( $changed ) {
+			update_option( 'certificate_generator_settings_email', $existing );
+		}
 	}
 
 	/**

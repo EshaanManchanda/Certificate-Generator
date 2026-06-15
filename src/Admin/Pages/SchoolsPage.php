@@ -81,11 +81,13 @@ class SchoolsPage {
 			$params[] = $cert_f; }
 
 		$offset  = ( $paged - 1 ) * $per_page;
-		$filters = array_filter( array(
-			'search'           => $search,
-			'city'             => $city_f,
-			'certificate_type' => $cert_f,
-		) );
+		$filters = array_filter(
+			array(
+				'search'           => $search,
+				'city'             => $city_f,
+				'certificate_type' => $cert_f,
+			)
+		);
 
 		if ( Config::flag( 'CG_USE_REPOSITORIES' ) ) {
 			$repo       = new UserRepository( 'schools' );

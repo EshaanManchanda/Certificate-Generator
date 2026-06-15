@@ -140,11 +140,13 @@ class StudentsPage {
 			$params[] = $cert_f; }
 
 		$offset  = ( $paged - 1 ) * $per_page;
-		$filters = array_filter( array(
-			'search'           => $search,
-			'school_name'      => $school_f,
-			'certificate_type' => $cert_f,
-		) );
+		$filters = array_filter(
+			array(
+				'search'           => $search,
+				'school_name'      => $school_f,
+				'certificate_type' => $cert_f,
+			)
+		);
 
 		if ( Config::flag( 'CG_USE_REPOSITORIES' ) ) {
 			$repo       = new UserRepository( 'students' );
@@ -153,11 +155,11 @@ class StudentsPage {
 			$schools    = $repo->distinct_column( 'school_name' );
 			$cert_types = $repo->distinct_column( 'certificate_type' );
 		} else {
-			$count_sql = "SELECT COUNT(*) FROM $table WHERE $where"; // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
-			$total     = (int) ( $params ? $wpdb->get_var( $wpdb->prepare( $count_sql, ...$params ) ) : $wpdb->get_var( $count_sql ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
-			$data_sql  = "SELECT * FROM $table WHERE $where ORDER BY $orderby $order LIMIT %d OFFSET %d"; // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
-			$rows      = $wpdb->get_results( $wpdb->prepare( $data_sql, ...array_merge( $params, array( $per_page, $offset ) ) ), \ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
-			$schools   = $wpdb->get_col( "SELECT DISTINCT school_name FROM $table WHERE school_name != '' ORDER BY school_name" ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+			$count_sql  = "SELECT COUNT(*) FROM $table WHERE $where"; // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+			$total      = (int) ( $params ? $wpdb->get_var( $wpdb->prepare( $count_sql, ...$params ) ) : $wpdb->get_var( $count_sql ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+			$data_sql   = "SELECT * FROM $table WHERE $where ORDER BY $orderby $order LIMIT %d OFFSET %d"; // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+			$rows       = $wpdb->get_results( $wpdb->prepare( $data_sql, ...array_merge( $params, array( $per_page, $offset ) ) ), \ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+			$schools    = $wpdb->get_col( "SELECT DISTINCT school_name FROM $table WHERE school_name != '' ORDER BY school_name" ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 			$cert_types = $wpdb->get_col( "SELECT DISTINCT certificate_type FROM $table WHERE certificate_type != '' ORDER BY certificate_type" ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 		}
 
@@ -290,7 +292,11 @@ class StudentsPage {
 								if ( empty( $row['email'] ) ) {
 									echo '<span style="color:#888;">No Email</span>';
 								} else {
-									$badge     = $email_statuses[ $row['email'] ] ?? array( 'status' => 'NotSent', 'last_error' => '', 'attempts' => 0 );
+									$badge     = $email_statuses[ $row['email'] ] ?? array(
+										'status'     => 'NotSent',
+										'last_error' => '',
+										'attempts'   => 0,
+									);
 									$status    = $badge['status'];
 									$err_title = ! empty( $badge['last_error'] ) ? ' title="' . \esc_attr( $badge['last_error'] ) . '"' : '';
 									switch ( $status ) {
@@ -649,7 +655,7 @@ endif;
 
 		// Resolve legacy anchor row — certificate_generator_send_email() expects its id.
 		$cg_table = $wpdb->prefix . 'certificate_generator';
-		$cg_id = (int) $wpdb->get_var( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+		$cg_id    = (int) $wpdb->get_var( // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 			$wpdb->prepare( "SELECT id FROM $cg_table WHERE email = %s ORDER BY id DESC LIMIT 1", $email ) // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		);
 

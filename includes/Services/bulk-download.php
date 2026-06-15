@@ -435,7 +435,7 @@ function school_bulk_certificate_download_shortcode() {
 				// Generate certificates for each student
 				while ( $students_query->have_posts() ) {
 					$students_query->the_post();
-					$student_id   = get_the_ID();
+					$student_id = get_the_ID();
 
 					// SQL-first — post meta only exists for legacy CPT records.
 					$_sql_row     = function_exists( 'cg_get_sql_row_for_post_cached' )
@@ -592,7 +592,10 @@ function school_bulk_certificate_download_shortcode() {
 				if ( ! empty( $certificate_files ) ) {
 					$certs_for_zip = array();
 					foreach ( $certificate_files as $file ) {
-						$certs_for_zip[] = array( 'path' => $file, 'filename' => basename( $file ) );
+						$certs_for_zip[] = array(
+							'path'     => $file,
+							'filename' => basename( $file ),
+						);
 					}
 
 					$zip_result = function_exists( 'certificate_generator_create_zip_for_email' )

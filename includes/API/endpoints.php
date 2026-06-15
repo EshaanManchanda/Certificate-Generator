@@ -536,7 +536,7 @@ function certificate_generator_generate_certificate_api( $student_id, $certifica
 	$school_name   = get_post_meta( $student_id, 'school_name', true );
 
 	// Generate unique filename
-	$filename = function_exists( 'cg_certificate_pdf_filename' )
+	$filename         = function_exists( 'cg_certificate_pdf_filename' )
 		? cg_certificate_pdf_filename( $student_name, '', $student_id . '_' . $certificate_id )
 		: 'certificate_' . $student_id . '_' . $certificate_id . '_' . time() . '.pdf';
 	$upload_dir       = wp_upload_dir();

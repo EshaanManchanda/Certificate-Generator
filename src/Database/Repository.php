@@ -64,7 +64,7 @@ abstract class Repository {
 				$offset
 			),
 			\ARRAY_A
-		) ?: [];
+		) ?: array();
 	}
 
 	public function count(): int {

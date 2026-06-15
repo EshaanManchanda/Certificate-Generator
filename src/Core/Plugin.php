@@ -104,8 +104,8 @@ class Plugin {
 			$cache_listener = new \CertificateGenerator\Listeners\InvalidateStatusCacheListener();
 
 			// Priority 10: log first (row must exist before analytics reads counters).
-			add_action( 'cg_email_sent', array( $log_listener,   'handle' ), 10 );
-			add_action( 'cg_email_sent', array( $analytics,      'handle' ), 20 );
+			add_action( 'cg_email_sent', array( $log_listener, 'handle' ), 10 );
+			add_action( 'cg_email_sent', array( $analytics, 'handle' ), 20 );
 			add_action( 'cg_email_sent', array( $cache_listener, 'handle' ), 30 );
 		}
 	}

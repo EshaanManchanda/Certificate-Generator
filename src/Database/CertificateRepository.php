@@ -22,7 +22,7 @@ class CertificateRepository extends Repository {
 				$email
 			),
 			\ARRAY_A
-		) ?: [];
+		) ?: array();
 	}
 
 	public function find_by_email_and_type( string $email, string $cert_type ): array {
@@ -33,7 +33,7 @@ class CertificateRepository extends Repository {
 				$cert_type
 			),
 			\ARRAY_A
-		) ?: [];
+		) ?: array();
 	}
 
 	public function find_by_type( string $cert_type, int $limit = 100, int $offset = 0 ): array {
@@ -45,7 +45,7 @@ class CertificateRepository extends Repository {
 				$offset
 			),
 			\ARRAY_A
-		) ?: [];
+		) ?: array();
 	}
 
 	public function count_by_type( string $cert_type ): int {

@@ -51,7 +51,7 @@ class UserRepository extends Repository {
 				$school_id
 			),
 			\ARRAY_A
-		) ?: [];
+		) ?: array();
 	}
 
 	// ── Admin list — paginated + filtered ────────────────────────────────────
@@ -72,11 +72,11 @@ class UserRepository extends Repository {
 	 */
 	public function find_page( array $filters, string $orderby, string $order, int $per_page, int $offset ): array {
 		[ $where, $params ] = $this->build_where( $filters );
-		$sql = "SELECT * FROM {$this->table} WHERE {$where} ORDER BY {$orderby} {$order} LIMIT %d OFFSET %d";
+		$sql                = "SELECT * FROM {$this->table} WHERE {$where} ORDER BY {$orderby} {$order} LIMIT %d OFFSET %d";
 		return $this->db->get_results(
 			$this->db->prepare( $sql, ...array_merge( $params, array( $per_page, $offset ) ) ),
 			\ARRAY_A
-		) ?: [];
+		) ?: array();
 	}
 
 	/**
@@ -87,7 +87,7 @@ class UserRepository extends Repository {
 	 */
 	public function count_filtered( array $filters ): int {
 		[ $where, $params ] = $this->build_where( $filters );
-		$sql = "SELECT COUNT(*) FROM {$this->table} WHERE {$where}";
+		$sql                = "SELECT COUNT(*) FROM {$this->table} WHERE {$where}";
 		return (int) ( $params
 			? $this->db->get_var( $this->db->prepare( $sql, ...$params ) )
 			: $this->db->get_var( $sql )
@@ -103,7 +103,7 @@ class UserRepository extends Repository {
 	public function distinct_column( string $col ): array {
 		return $this->db->get_col(
 			"SELECT DISTINCT {$col} FROM {$this->table} WHERE {$col} != '' ORDER BY {$col}"
-		) ?: [];
+		) ?: array();
 	}
 
 	// ── Internals ─────────────────────────────────────────────────────────────
@@ -118,8 +118,8 @@ class UserRepository extends Repository {
 		$params = array();
 
 		if ( ! empty( $filters['search'] ) ) {
-			$like    = '%' . $this->db->esc_like( (string) $filters['search'] ) . '%';
-			$where  .= " AND ({$this->name_col} LIKE %s OR email LIKE %s)";
+			$like     = '%' . $this->db->esc_like( (string) $filters['search'] ) . '%';
+			$where   .= " AND ({$this->name_col} LIKE %s OR email LIKE %s)";
 			$params[] = $like;
 			$params[] = $like;
 		}

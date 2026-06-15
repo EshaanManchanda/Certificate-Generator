@@ -21,7 +21,7 @@ class EmailLogRepository extends Repository {
 				$cg_id
 			),
 			\ARRAY_A
-		) ?: [];
+		) ?: array();
 	}
 
 	public function find_by_email( string $email, int $limit = 50, int $offset = 0 ): array {
@@ -33,7 +33,7 @@ class EmailLogRepository extends Repository {
 				$offset
 			),
 			\ARRAY_A
-		) ?: [];
+		) ?: array();
 	}
 
 	public function find_by_status( string $status, int $limit = 50, int $offset = 0 ): array {
@@ -45,7 +45,7 @@ class EmailLogRepository extends Repository {
 				$offset
 			),
 			\ARRAY_A
-		) ?: [];
+		) ?: array();
 	}
 
 	public function count_by_status( string $status ): int {
@@ -69,7 +69,13 @@ class EmailLogRepository extends Repository {
 	}
 
 	public function mark_failed( int $id, string $error = '' ): bool {
-		return $this->update( $id, array( 'status' => 'failed', 'error_message' => $error ) );
+		return $this->update(
+			$id,
+			array(
+				'status'        => 'failed',
+				'error_message' => $error,
+			)
+		);
 	}
 
 	/**
@@ -91,6 +97,6 @@ class EmailLogRepository extends Repository {
 				...$emails
 			),
 			\ARRAY_A
-		) ?: [];
+		) ?: array();
 	}
 }

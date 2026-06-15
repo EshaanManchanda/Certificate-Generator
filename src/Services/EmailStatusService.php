@@ -45,7 +45,11 @@ class EmailStatusService {
 
 		$result = array_fill_keys(
 			$emails,
-			array( 'status' => self::STATUS_NOT_SENT, 'last_error' => '', 'attempts' => 0 )
+			array(
+				'status'     => self::STATUS_NOT_SENT,
+				'last_error' => '',
+				'attempts'   => 0,
+			)
 		);
 
 		// ── Object cache layer (only when event system is active) ────────────────
@@ -74,13 +78,13 @@ class EmailStatusService {
 		}
 
 		foreach ( $misses as $email ) {
-			$log   = $log_latest[ $email ]   ?? null;
+			$log   = $log_latest[ $email ] ?? null;
 			$queue = $queue_latest[ $email ] ?? null;
 
 			if ( ! $log && ! $queue ) {
 				// Keep default NotSent; still cache it so we don't re-query.
 			} else {
-				$log_ts   = $log   ? (int) strtotime( $log['created_at'] )   : 0;
+				$log_ts   = $log ? (int) strtotime( $log['created_at'] ) : 0;
 				$queue_ts = $queue ? (int) strtotime( $queue['updated_at'] ) : 0;
 				$use_q    = $queue_ts >= $log_ts;
 
@@ -136,7 +140,7 @@ class EmailStatusService {
 		$log_rows   = ( new EmailLogRepository() )->find_by_emails( $emails );
 		$queue_rows = ( new QueueRepository() )->find_by_emails( $emails );
 		return array(
-			self::key_first_by_email( $log_rows,   'recipient_email' ),
+			self::key_first_by_email( $log_rows, 'recipient_email' ),
 			self::key_first_by_email( $queue_rows, 'recipient_email' ),
 		);
 	}
@@ -167,7 +171,7 @@ class EmailStatusService {
 		) ?: array();
 
 		return array(
-			self::key_first_by_email( $log_rows,   'recipient_email' ),
+			self::key_first_by_email( $log_rows, 'recipient_email' ),
 			self::key_first_by_email( $queue_rows, 'recipient_email' ),
 		);
 	}

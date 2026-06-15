@@ -26,7 +26,7 @@ class QueueRepository extends Repository {
 				$limit
 			),
 			\ARRAY_A
-		) ?: [];
+		) ?: array();
 	}
 
 	public function find_by_certificate_id( int $cg_id ): array {
@@ -36,7 +36,7 @@ class QueueRepository extends Repository {
 				$cg_id
 			),
 			\ARRAY_A
-		) ?: [];
+		) ?: array();
 	}
 
 	public function has_pending_or_sending( int $cg_id, string $email ): bool {
@@ -56,11 +56,23 @@ class QueueRepository extends Repository {
 	}
 
 	public function mark_sent( int $id ): bool {
-		return $this->update( $id, array( 'status' => 'sent', 'sent_at' => current_time( 'mysql' ) ) );
+		return $this->update(
+			$id,
+			array(
+				'status'  => 'sent',
+				'sent_at' => current_time( 'mysql' ),
+			)
+		);
 	}
 
 	public function mark_failed( int $id, string $error = '' ): bool {
-		return $this->update( $id, array( 'status' => 'failed', 'error_message' => $error ) );
+		return $this->update(
+			$id,
+			array(
+				'status'        => 'failed',
+				'error_message' => $error,
+			)
+		);
 	}
 
 	public function increment_attempts( int $id ): bool {
@@ -101,6 +113,6 @@ class QueueRepository extends Repository {
 				...$emails
 			),
 			\ARRAY_A
-		) ?: [];
+		) ?: array();
 	}
 }

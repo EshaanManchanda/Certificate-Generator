@@ -940,7 +940,14 @@ function cg_ajax_delete_all_data(): void {
 
 	// 2. CPT posts.
 	foreach ( array( 'students', 'teachers', 'schools' ) as $pt ) {
-		$ids = get_posts( array( 'post_type' => $pt, 'numberposts' => -1, 'fields' => 'ids', 'post_status' => 'any' ) );
+		$ids = get_posts(
+			array(
+				'post_type'   => $pt,
+				'numberposts' => -1,
+				'fields'      => 'ids',
+				'post_status' => 'any',
+			)
+		);
 		foreach ( $ids as $id ) {
 			wp_delete_post( (int) $id, true );
 		}
@@ -2049,9 +2056,9 @@ function certificate_generator_settings_page() {
 
 				<?php
 				if ( class_exists( '\CertificateGenerator\Database\CustomTables' ) ) {
-					$_sched_tables   = \CertificateGenerator\Database\CustomTables::instance();
-					$_sched_tpl_tbl  = $_sched_tables->get_table( 'certificate_templates' );
-					$_sched_rows     = $GLOBALS['wpdb']->get_results(
+					$_sched_tables  = \CertificateGenerator\Database\CustomTables::instance();
+					$_sched_tpl_tbl = $_sched_tables->get_table( 'certificate_templates' );
+					$_sched_rows    = $GLOBALS['wpdb']->get_results(
 						"SELECT * FROM $_sched_tpl_tbl
 						  WHERE status IN ('scheduled','draft')
 						  ORDER BY (event_date IS NULL OR event_date = '0000-00-00') ASC, event_date ASC, template_name ASC",

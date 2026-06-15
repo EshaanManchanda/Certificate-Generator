@@ -413,11 +413,13 @@ function cg_certificates_url(): string {
  * Do NOT use for the stored/canonical pdf_path on disk — that uses certificate_{post_id}.pdf.
  */
 function cg_certificate_pdf_filename( string $student_name, string $cert_type, string $unique_id = '' ): string {
-	$parts = array_filter( array(
-		sanitize_file_name( $student_name ),
-		sanitize_file_name( $cert_type ),
-		$unique_id,
-	) );
+	$parts = array_filter(
+		array(
+			sanitize_file_name( $student_name ),
+			sanitize_file_name( $cert_type ),
+			$unique_id,
+		)
+	);
 	return implode( '_', $parts ) . '_certificate.pdf';
 }
 
@@ -523,7 +525,11 @@ function cg_get_pending_certificate_info( $email ) {
 	) === $tpl_table;
 
 	if ( ! $tpl_exists ) {
-		return array( 'students' => $students, 'state' => 'none', 'event_date' => null );
+		return array(
+			'students'   => $students,
+			'state'      => 'none',
+			'event_date' => null,
+		);
 	}
 
 	$state      = 'none';
@@ -580,7 +586,11 @@ function cg_get_pending_certificate_info( $email ) {
 		}
 	}
 
-	return array( 'students' => $students, 'state' => $state, 'event_date' => $event_date );
+	return array(
+		'students'   => $students,
+		'state'      => $state,
+		'event_date' => $event_date,
+	);
 }
 
 /**
@@ -601,7 +611,7 @@ function cg_render_pending_certificate_screen( array $pending ): string {
 	if ( $state === 'scheduled' && $event_date !== null ) {
 		$today = current_time( 'Y-m-d' );
 		if ( $event_date > $today ) {
-			$human    = date_i18n( get_option( 'date_format' ), strtotime( $event_date ) );
+			$human     = date_i18n( get_option( 'date_format' ), strtotime( $event_date ) );
 			$body_html = '<p style="color: ' . $text_color . '; margin-bottom: 15px; line-height: 1.6; font-size: 16px;">'
 				. esc_html__( 'We found your registration, but your certificate is not live yet.', 'certificate-generator' )
 				. '</p>'

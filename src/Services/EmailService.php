@@ -104,7 +104,11 @@ class EmailService {
 
 	public static function bulkQueue( string $post_type, array $ids = array() ): array {
 		if ( ! function_exists( 'certificate_generator_bulk_queue_emails' ) ) {
-			return array( 'queued' => 0, 'skipped' => 0, 'errors' => array() );
+			return array(
+				'queued'  => 0,
+				'skipped' => 0,
+				'errors'  => array(),
+			);
 		}
 		return certificate_generator_bulk_queue_emails( $post_type, $ids );
 	}

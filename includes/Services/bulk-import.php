@@ -574,8 +574,8 @@ function bulk_import_schools() {
 				);
 
 				// Validate headers — accept 'place' (current export) or 'city' (old SQL export) for the city field
-				$has_place = in_array( 'place', $header_keys, true );
-				$has_city  = in_array( 'city', $header_keys, true );
+				$has_place       = in_array( 'place', $header_keys, true );
+				$has_city        = in_array( 'city', $header_keys, true );
 				$required_fields = array(
 					'school_name',
 					( $has_place || ! $has_city ) ? 'place' : 'city',
@@ -585,9 +585,9 @@ function bulk_import_schools() {
 
 				// Check only for missing required fields — never reject extra columns
 				// Also treat the unused city/place alias as an allowed extra.
-				$known_optional  = array( 'status', 'send_email', $has_place ? 'city' : 'place' );
-				$missing_fields  = array_diff( $required_fields, $header_keys );
-				$extra_columns   = array_values( array_filter( array_diff( $header_keys, array_merge( $required_fields, $known_optional ) ) ) );
+				$known_optional = array( 'status', 'send_email', $has_place ? 'city' : 'place' );
+				$missing_fields = array_diff( $required_fields, $header_keys );
+				$extra_columns  = array_values( array_filter( array_diff( $header_keys, array_merge( $required_fields, $known_optional ) ) ) );
 
 				if ( ! empty( $missing_fields ) ) {
 					$error_msg  = '<strong>Invalid CSV format.</strong><br><br>';
@@ -942,10 +942,10 @@ function bulk_import_certificates() {
 						$page_size_raw = $certificate_data['page_size'] ?? 'A4';
 						$page_size     = in_array( $page_size_raw, array( 'A4', 'Letter', 'Legal', 'Custom' ), true ) ? $page_size_raw : 'A4';
 
-						$qr_raw              = strtolower( trim( $certificate_data['qr_enabled'] ?? '0' ) );
-						$qr_enabled          = ! in_array( $qr_raw, array( '', '0', 'false', 'no' ), true ) ? 1 : 0;
-						$sn_raw              = strtolower( trim( $certificate_data['serial_number_display'] ?? '0' ) );
-						$serial_number_disp  = ! in_array( $sn_raw, array( '', '0', 'false', 'no' ), true ) ? 1 : 0;
+						$qr_raw             = strtolower( trim( $certificate_data['qr_enabled'] ?? '0' ) );
+						$qr_enabled         = ! in_array( $qr_raw, array( '', '0', 'false', 'no' ), true ) ? 1 : 0;
+						$sn_raw             = strtolower( trim( $certificate_data['serial_number_display'] ?? '0' ) );
+						$serial_number_disp = ! in_array( $sn_raw, array( '', '0', 'false', 'no' ), true ) ? 1 : 0;
 
 						$host          = $template_url ? parse_url( $template_url, PHP_URL_HOST ) : null;
 						$date_suffix   = $event_date ? ' (' . $event_date . ')' : '';

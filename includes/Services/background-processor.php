@@ -236,8 +236,8 @@ class Certificate_Background_Processor {
 		// Build SQL-first name + cg_id lookup for each post_id so filenames are correct
 		// even for records that were never in CPT post meta (new SQL-only entries).
 		global $wpdb;
-		$cg_table = $wpdb->prefix . 'certificate_generator';
-		$post_ids = array_keys( $job_data['certificates'] );
+		$cg_table  = $wpdb->prefix . 'certificate_generator';
+		$post_ids  = array_keys( $job_data['certificates'] );
 		$cert_meta = array();
 		foreach ( $post_ids as $post_id ) {
 			$sql_row = function_exists( 'cg_get_sql_row_for_post_cached' )
@@ -260,7 +260,11 @@ class Certificate_Background_Processor {
 				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery
 				$cg_id = (int) $wpdb->get_var( $wpdb->prepare( "SELECT id FROM $cg_table WHERE email = %s ORDER BY id DESC LIMIT 1", $email ) );
 			}
-			$cert_meta[ $post_id ] = array( 'name' => $name, 'type' => $type, 'cg_id' => $cg_id ?: (int) $post_id );
+			$cert_meta[ $post_id ] = array(
+				'name'  => $name,
+				'type'  => $type,
+				'cg_id' => $cg_id ?: (int) $post_id,
+			);
 		}
 
 		// Build normalized file list for the canonical ZIP builder.
@@ -272,11 +276,18 @@ class Certificate_Background_Processor {
 					$job_data['errors'][] = "File not found: {$certificate['path']}";
 					continue;
 				}
-				$meta       = $cert_meta[ $cert_id ] ?? array( 'name' => (string) $cert_id, 'type' => '', 'cg_id' => (int) $cert_id );
-				$clean_name = function_exists( 'cg_certificate_pdf_filename' )
+				$meta                = $cert_meta[ $cert_id ] ?? array(
+					'name'  => (string) $cert_id,
+					'type'  => '',
+					'cg_id' => (int) $cert_id,
+				);
+				$clean_name          = function_exists( 'cg_certificate_pdf_filename' )
 					? cg_certificate_pdf_filename( $meta['name'], $meta['type'], $meta['cg_id'] )
 					: sanitize_file_name( $meta['name'] . '_' . $meta['type'] . '_' . $meta['cg_id'] . '.pdf' );
-				$certificates_data[] = array( 'path' => $certificate['path'], 'filename' => $clean_name );
+				$certificates_data[] = array(
+					'path'     => $certificate['path'],
+					'filename' => $clean_name,
+				);
 			}
 		}
 

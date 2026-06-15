@@ -95,7 +95,7 @@ function cg_generate_pdf_from_row( array $row ): ?string {
 			$fields    = class_exists( 'CG_Field_Schema' )
 				? CG_Field_Schema::get_all_renderable_fields( $cert_type )
 				: array( 'student_name', 'school_name', 'issue_date' );
-			$file_url = generate_certificate_pdf( $post_id, $fields, $sql_row );
+			$file_url  = generate_certificate_pdf( $post_id, $fields, $sql_row );
 			if ( $file_url ) {
 				// Derive filesystem path from URL — don't rely on postmeta which
 				// may not be saved when wp_post_id = 0.
@@ -227,9 +227,9 @@ function _cg_create_zip_impl( $certificates_data, $recipient_email ) {
 	}
 
 	// Build ZIP file path + URL.
-	$zip_name   = function_exists( 'cg_certificate_zip_filename' ) ? cg_certificate_zip_filename( $recipient_email ) : 'certificates_' . preg_replace( '/[^a-z0-9]/', '_', strtolower( $recipient_email ) ) . '_' . time() . '.zip';
-	$zip_path   = cg_certificates_dir() . '/' . $zip_name;
-	$zip_url    = cg_certificates_url() . '/' . $zip_name;
+	$zip_name = function_exists( 'cg_certificate_zip_filename' ) ? cg_certificate_zip_filename( $recipient_email ) : 'certificates_' . preg_replace( '/[^a-z0-9]/', '_', strtolower( $recipient_email ) ) . '_' . time() . '.zip';
+	$zip_path = cg_certificates_dir() . '/' . $zip_name;
+	$zip_url  = cg_certificates_url() . '/' . $zip_name;
 
 	$zip = new ZipArchive();
 	if ( $zip->open( $zip_path, ZipArchive::CREATE | ZipArchive::OVERWRITE ) !== true ) {
@@ -454,7 +454,7 @@ function certificate_generator_send_email( $cg_id, $log_email = true ) {
 
 			$cert_path = wp_normalize_path( $cert_path );
 
-			$_pdf_name = function_exists( 'cg_certificate_pdf_filename' )
+			$_pdf_name                   = function_exists( 'cg_certificate_pdf_filename' )
 				? cg_certificate_pdf_filename( $cert_row['student_name'], $cert_row['certificate_type'] ?? '', (string) $cert_row['id'] )
 				: basename( $cert_path );
 			$certificates_data[]         = array(

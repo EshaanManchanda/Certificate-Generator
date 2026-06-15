@@ -140,8 +140,6 @@ class TemplatesPage {
 			$message = count( $ids ) . ' template(s) deleted.';
 		}
 
-
-
 		$search        = sanitize_text_field( $_GET['s'] ?? '' );
 		$type_f        = sanitize_text_field( $_GET['type_filter'] ?? '' );
 		$status_f      = sanitize_text_field( $_GET['status_filter'] ?? '' );
@@ -307,7 +305,23 @@ class TemplatesPage {
 							<td>
 								<a href="<?php echo esc_url( add_query_arg( 'id', $row_id, $edit_url ) ); ?>"><?php esc_html_e( 'Edit', 'certificate-generator' ); ?></a>
 								&nbsp;|&nbsp;
-								<a href="<?php echo esc_url( wp_nonce_url( add_query_arg( array( 'page' => $this->slug, 'action' => 'duplicate', 'id' => $row_id ), admin_url( 'admin.php' ) ), 'cg_duplicate_template_' . $row_id ) ); ?>"><?php esc_html_e( 'Duplicate', 'certificate-generator' ); ?></a>
+								<a href="
+								<?php
+								echo esc_url(
+									wp_nonce_url(
+										add_query_arg(
+											array(
+												'page'   => $this->slug,
+												'action' => 'duplicate',
+												'id'     => $row_id,
+											),
+											admin_url( 'admin.php' )
+										),
+										'cg_duplicate_template_' . $row_id
+									)
+								);
+								?>
+											"><?php esc_html_e( 'Duplicate', 'certificate-generator' ); ?></a>
 								&nbsp;|&nbsp;
 								<a href="
 								<?php

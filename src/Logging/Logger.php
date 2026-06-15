@@ -60,9 +60,9 @@ class Logger {
 			return;
 		}
 
-		$file    = $dir . '/cg-' . gmdate( 'Y-m-d' ) . '.log';
+		$file        = $dir . '/cg-' . gmdate( 'Y-m-d' ) . '.log';
 		$context_str = $context ? ' ' . wp_json_encode( $context ) : '';
-		$line    = sprintf(
+		$line        = sprintf(
 			"[%s] [%s] %s%s\n",
 			gmdate( 'Y-m-d H:i:s' ),
 			$level,

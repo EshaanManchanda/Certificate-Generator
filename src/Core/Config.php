@@ -40,21 +40,21 @@ class Config {
 	public const CAPABILITY_EDIT_POSTS = 'edit_posts';
 
 	// ── Queue processing (mirrors defines in certificate-generator.php) ──────────
-	public const QUEUE_BATCH_SIZE    = 50;
-	public const QUEUE_STALE_MINUTES = 10;
-	public const QUEUE_MAX_ATTEMPTS  = 3;
+	public const QUEUE_BATCH_SIZE     = 50;
+	public const QUEUE_STALE_MINUTES  = 10;
+	public const QUEUE_MAX_ATTEMPTS   = 3;
 	public const QUEUE_RUNTIME_BUDGET = 20; // seconds
 
 	// ── v8 feature flags (default OFF; flip via wp-config define to enable) ──────
-	//    CG_USE_NEW_PDF        — route generate_certificate_pdf* through PdfGenerator
-	//    CG_USE_NEW_ZIP        — route cg_build_certificate_zip through ZipService
-	//    CG_USE_REPOSITORIES   — route DB reads/writes through Repository layer
-	//    CG_USE_DTO            — wrap CertificateData/EmailData value objects
-	//    CG_USE_EVENTS         — fire do_action('cg_email_sent') + listeners
+	// CG_USE_NEW_PDF        — route generate_certificate_pdf* through PdfGenerator
+	// CG_USE_NEW_ZIP        — route cg_build_certificate_zip through ZipService
+	// CG_USE_REPOSITORIES   — route DB reads/writes through Repository layer
+	// CG_USE_DTO            — wrap CertificateData/EmailData value objects
+	// CG_USE_EVENTS         — fire do_action('cg_email_sent') + listeners
 	// ── debug flags (default OFF; flip via wp-config to enable profiling) ─────────
-	//    CG_DEBUG_PDF_TIME     — log PDF generation time to uploads/cg-debug/
-	//    CG_DEBUG_QUERY_TIME   — log repository query counts/times
-	//    CG_DEBUG_SERVICES     — log service dispatch trace
+	// CG_DEBUG_PDF_TIME     — log PDF generation time to uploads/cg-debug/
+	// CG_DEBUG_QUERY_TIME   — log repository query counts/times
+	// CG_DEBUG_SERVICES     — log service dispatch trace
 
 	/**
 	 * Check whether a v8 feature flag or debug flag is enabled.

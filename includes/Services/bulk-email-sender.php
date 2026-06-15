@@ -61,7 +61,7 @@ function certificate_generator_process_queue_batch() {
 		// Stale-row reclaim: rows stuck in 'sending' longer than CG_QUEUE_STALE_MINUTES
 		// are reset to 'pending' with attempts incremented so they eventually land on 'failed'.
 		$stale_minutes = defined( 'CG_QUEUE_STALE_MINUTES' ) ? (int) CG_QUEUE_STALE_MINUTES : 10;
-		$max_attempts  = defined( 'CG_QUEUE_MAX_ATTEMPTS' )  ? (int) CG_QUEUE_MAX_ATTEMPTS  : 3;
+		$max_attempts  = defined( 'CG_QUEUE_MAX_ATTEMPTS' ) ? (int) CG_QUEUE_MAX_ATTEMPTS : 3;
 		$queue_table   = $wpdb->prefix . 'cert_email_queue';
 
 		$wpdb->query( // phpcs:ignore WordPress.DB.DirectDatabaseQuery
@@ -93,7 +93,7 @@ function certificate_generator_process_queue_batch() {
 			return $results;
 		}
 
-		$start = microtime( true );
+		$start  = microtime( true );
 		$budget = defined( 'CG_QUEUE_RUNTIME_BUDGET' ) ? (int) CG_QUEUE_RUNTIME_BUDGET : 20;
 
 		foreach ( $emails as $queue_item ) {

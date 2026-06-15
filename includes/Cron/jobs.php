@@ -169,8 +169,8 @@ class CG_Cron_Jobs {
 			return;
 		}
 
-		$today    = current_time( 'Y-m-d' );
-		$updated  = $GLOBALS['wpdb']->query(
+		$today   = current_time( 'Y-m-d' );
+		$updated = $GLOBALS['wpdb']->query(
 			$GLOBALS['wpdb']->prepare(
 				"UPDATE $tpl_table
 				    SET status = 'published', updated_at = NOW()

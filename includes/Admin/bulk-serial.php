@@ -85,8 +85,8 @@ class CG_Bulk_Serial_Generator {
 			if ( ! $tbl ) {
 				continue;
 			}
-			$with    = (int) $wpdb->get_var( "SELECT COUNT(*) FROM $tbl WHERE serial_number IS NOT NULL AND serial_number != ''" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
-			$without = (int) $wpdb->get_var( "SELECT COUNT(*) FROM $tbl WHERE serial_number IS NULL OR serial_number = ''" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+			$with                           = (int) $wpdb->get_var( "SELECT COUNT(*) FROM $tbl WHERE serial_number IS NOT NULL AND serial_number != ''" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+			$without                        = (int) $wpdb->get_var( "SELECT COUNT(*) FROM $tbl WHERE serial_number IS NULL OR serial_number = ''" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 			$stats['total_with_serial']    += $with;
 			$stats['total_without_serial'] += $without;
 			$stats['total_posts']          += $with + $without;

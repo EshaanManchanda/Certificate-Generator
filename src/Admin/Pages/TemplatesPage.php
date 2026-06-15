@@ -60,6 +60,44 @@ class TemplatesPage {
 			}
 		);
 
+		// Duplicate action — must run on admin_init (before any output) so wp_safe_redirect works.
+		add_action(
+			'admin_init',
+			function (): void {
+				if ( ! isset( $_GET['page'], $_GET['action'], $_GET['id'] ) ) {
+					return;
+				}
+				if ( $_GET['page'] !== $this->slug || $_GET['action'] !== 'duplicate' ) {
+					return;
+				}
+				if ( ! current_user_can( 'manage_options' ) ) {
+					return;
+				}
+				$src_id = absint( $_GET['id'] );
+				if ( ! wp_verify_nonce( sanitize_text_field( wp_unslash( $_GET['_wpnonce'] ?? '' ) ), 'cg_duplicate_template_' . $src_id ) ) {
+					return;
+				}
+
+				global $wpdb;
+				$table   = CustomTables::instance()->get_table( $this->table_key );
+				$src_row = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM `$table` WHERE id = %d", $src_id ), ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+
+				if ( $src_row ) {
+					unset( $src_row['id'] );
+					$src_row['template_name'] = __( 'Copy of', 'certificate-generator' ) . ' ' . $src_row['template_name'];
+					$src_row['status']        = 'draft';
+					$src_row['created_at']    = current_time( 'mysql' );
+					$src_row['updated_at']    = current_time( 'mysql' );
+					$wpdb->insert( $table, $src_row );
+					$new_id = (int) $wpdb->insert_id;
+					if ( $new_id ) {
+						wp_safe_redirect( admin_url( 'admin.php?page=' . $this->edit_slug . '&id=' . $new_id . '&duplicated=1' ) );
+						exit;
+					}
+				}
+			}
+		);
+
 		// Enqueue jQuery UI draggable + shared media uploader on the template edit page
 		add_action(
 			'admin_enqueue_scripts',
@@ -101,6 +139,8 @@ class TemplatesPage {
 			}
 			$message = count( $ids ) . ' template(s) deleted.';
 		}
+
+
 
 		$search        = sanitize_text_field( $_GET['s'] ?? '' );
 		$type_f        = sanitize_text_field( $_GET['type_filter'] ?? '' );
@@ -167,6 +207,7 @@ class TemplatesPage {
 				<select name="status_filter" style="margin-left:5px;">
 					<option value=""><?php esc_html_e( '— All Statuses —', 'certificate-generator' ); ?></option>
 					<option value="published" <?php selected( $status_f, 'published' ); ?>><?php esc_html_e( 'Published', 'certificate-generator' ); ?></option>
+					<option value="scheduled" <?php selected( $status_f, 'scheduled' ); ?>><?php esc_html_e( 'Scheduled', 'certificate-generator' ); ?></option>
 					<option value="draft" <?php selected( $status_f, 'draft' ); ?>><?php esc_html_e( 'Draft', 'certificate-generator' ); ?></option>
 					<option value="archived" <?php selected( $status_f, 'archived' ); ?>><?php esc_html_e( 'Archived', 'certificate-generator' ); ?></option>
 				</select>
@@ -266,6 +307,8 @@ class TemplatesPage {
 							<td>
 								<a href="<?php echo esc_url( add_query_arg( 'id', $row_id, $edit_url ) ); ?>"><?php esc_html_e( 'Edit', 'certificate-generator' ); ?></a>
 								&nbsp;|&nbsp;
+								<a href="<?php echo esc_url( wp_nonce_url( add_query_arg( array( 'page' => $this->slug, 'action' => 'duplicate', 'id' => $row_id ), admin_url( 'admin.php' ) ), 'cg_duplicate_template_' . $row_id ) ); ?>"><?php esc_html_e( 'Duplicate', 'certificate-generator' ); ?></a>
+								&nbsp;|&nbsp;
 								<a href="
 								<?php
 								echo esc_url(
@@ -350,6 +393,10 @@ endif;
 			if ( ! $type ) {
 				$errors[] = __( 'Certificate type is required.', 'certificate-generator' );
 			}
+			$raw_status = $_POST['status'] ?? '';
+			if ( $raw_status === 'scheduled' && empty( trim( $_POST['event_date'] ?? '' ) ) ) {
+				$errors[] = __( 'An Event Date is required when status is set to Scheduled.', 'certificate-generator' );
+			}
 
 			if ( empty( $errors ) ) {
 				$event_raw  = sanitize_text_field( $_POST['event_date'] ?? '' );
@@ -380,7 +427,7 @@ endif;
 					'serial_number_font_size'  => absint( $_POST['serial_number_font_size'] ?? 10 ),
 					'expiration_period_unit'   => in_array( $_POST['expiration_period_unit'] ?? '', array( 'never', 'days', 'months', 'years' ), true ) ? sanitize_key( $_POST['expiration_period_unit'] ) : 'never',
 					'expiration_period_value'  => absint( $_POST['expiration_period_value'] ?? 0 ),
-					'status'                   => in_array( $_POST['status'] ?? '', array( 'draft', 'published', 'archived' ), true ) ? sanitize_key( $_POST['status'] ) : 'draft',
+					'status'                   => in_array( $_POST['status'] ?? '', array( 'draft', 'scheduled', 'published', 'archived' ), true ) ? sanitize_key( $_POST['status'] ) : 'draft',
 					'updated_at'               => current_time( 'mysql' ),
 				);
 
@@ -407,7 +454,7 @@ endif;
 					$extra_fields[ "field_{$i}_position_y" ] = $y_input !== '' ? floatval( $y_input ) : 60 + ( $i * 25 );
 					$extra_fields[ "field_{$i}_visible" ]    = ! empty( $_POST[ "field_{$i}_visible" ] ) ? '1' : '0';
 					$extra_fields[ "field_{$i}_width" ]      = floatval( $_POST[ "field_{$i}_width" ] ?? 100 );
-					$alignment                               = sanitize_key( $_POST[ "field_{$i}_alignment" ] ?? 'C' );
+					$alignment                               = strtoupper( sanitize_key( $_POST[ "field_{$i}_alignment" ] ?? 'c' ) );
 					$extra_fields[ "field_{$i}_alignment" ]  = in_array( $alignment, array( 'L', 'C', 'R' ), true ) ? $alignment : 'C';
 				}
 				$data['extra_fields'] = wp_json_encode( $extra_fields );
@@ -431,6 +478,10 @@ endif;
 		<div class="wrap">
 			<h1><?php echo esc_html( $id ? __( 'Edit Template', 'certificate-generator' ) : __( 'Add New Template', 'certificate-generator' ) ); ?></h1>
 			<a href="<?php echo esc_url( $list_url ); ?>"><?php esc_html_e( '← Back to Templates', 'certificate-generator' ); ?></a>
+
+			<?php if ( ! empty( $_GET['duplicated'] ) ) : ?>
+				<div class="notice notice-success is-dismissible"><p><?php esc_html_e( 'Template duplicated. Update the name and settings, then save.', 'certificate-generator' ); ?></p></div>
+			<?php endif; ?>
 
 			<?php
 			foreach ( $errors as $e ) :
@@ -509,13 +560,16 @@ endif;
 							<?php
 							foreach ( array(
 								'draft'     => __( 'Draft', 'certificate-generator' ),
+								'scheduled' => __( 'Scheduled', 'certificate-generator' ),
 								'published' => __( 'Published', 'certificate-generator' ),
 								'archived'  => __( 'Archived', 'certificate-generator' ),
 							) as $s => $label ) :
 								?>
 								<option value="<?php echo esc_attr( $s ); ?>" <?php selected( $row['status'] ?? 'draft', $s ); ?>><?php echo esc_html( $label ); ?></option>
 							<?php endforeach; ?>
-						</select></td>
+						</select>
+						<p class="description"><?php esc_html_e( 'Scheduled: auto-publishes on the Event Date. Requires Event Date to be set.', 'certificate-generator' ); ?></p>
+						</td>
 					</tr>
 				</table>
 
@@ -839,6 +893,16 @@ endif;
 
 			function pageDims() {
 				return orientation() === 'landscape' ? { w: 297, h: 210 } : { w: 210, h: 297 };
+			}
+
+			function updateInputMaxValues() {
+				var d = pageDims();
+				for (var _i = 1; _i <= MAX_FIELDS; _i++) {
+					$('#field_' + _i + '_position_x').attr('max', d.w);
+					$('#field_' + _i + '_position_y').attr('max', d.h);
+				}
+				$('#qr_position_x, #serial_number_position_x').attr('max', d.w);
+				$('#qr_position_y, #serial_number_position_y').attr('max', d.h);
 			}
 
 			function canvasDims() {
@@ -1210,7 +1274,7 @@ endif;
 				// ── Event bindings ────────────────────────────────────────────
 
 				$('#template_url').on('change', initCanvas);
-				$('#orientation').on('change', function () { updateCanvasSize(); repositionAll(); });
+				$('#orientation').on('change', function () { updateCanvasSize(); updateInputMaxValues(); repositionAll(); });
 				$('#qr_enabled, #serial_number_display').on('change', buildHandles);
 				$('#qr_size,#qr_position_x,#qr_position_y,#serial_number_position_x,#serial_number_position_y').on('change input', function () { positionQRHandle(); positionSerialHandle(); });
 
@@ -1237,6 +1301,7 @@ endif;
 				updateFieldRows();
 				applyColors();
 				initCanvas();
+				updateInputMaxValues();
 
 				// ── Preview Certificate button ────────────────────────────────
 				$('#cg_preview_cert_btn').on('click', function () {

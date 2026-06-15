@@ -8,6 +8,7 @@ class CG_Cron_Jobs {
 		add_action( 'cg_cleanup_qr_codes', array( __CLASS__, 'cleanup_qr_codes' ) );
 		add_action( 'cg_check_expiring_certificates', array( __CLASS__, 'check_expiring_certificates' ) );
 		add_action( 'cg_cleanup_old_certificates', array( __CLASS__, 'cleanup_old_certificates' ) );
+		add_action( 'cg_publish_scheduled_templates', array( __CLASS__, 'publish_scheduled_templates' ) );
 
 		if ( ! wp_next_scheduled( 'cg_cleanup_qr_codes' ) ) {
 			wp_schedule_event( time(), 'daily', 'cg_cleanup_qr_codes' );
@@ -20,12 +21,17 @@ class CG_Cron_Jobs {
 		if ( ! wp_next_scheduled( 'cg_cleanup_old_certificates' ) ) {
 			wp_schedule_event( time(), 'weekly', 'cg_cleanup_old_certificates' );
 		}
+
+		if ( ! wp_next_scheduled( 'cg_publish_scheduled_templates' ) ) {
+			wp_schedule_event( time(), 'hourly', 'cg_publish_scheduled_templates' );
+		}
 	}
 
 	public static function deactivate() {
 		wp_clear_scheduled_hook( 'cg_cleanup_qr_codes' );
 		wp_clear_scheduled_hook( 'cg_check_expiring_certificates' );
 		wp_clear_scheduled_hook( 'cg_cleanup_old_certificates' );
+		wp_clear_scheduled_hook( 'cg_publish_scheduled_templates' );
 	}
 
 	public static function cleanup_qr_codes() {
@@ -144,6 +150,40 @@ class CG_Cron_Jobs {
 
 		if ( $archived > 0 && defined( 'WP_DEBUG' ) && WP_DEBUG ) {
 			error_log( "[CG Cron] Archived $archived old expired certificates" );
+		}
+	}
+
+	public static function publish_scheduled_templates() {
+		if ( ! class_exists( '\CertificateGenerator\Database\CustomTables' ) ) {
+			return;
+		}
+
+		$tables    = \CertificateGenerator\Database\CustomTables::instance();
+		$tpl_table = $tables->get_table( 'certificate_templates' );
+
+		$table_exists = $GLOBALS['wpdb']->get_var(
+			$GLOBALS['wpdb']->prepare( 'SHOW TABLES LIKE %s', $tpl_table )
+		) === $tpl_table;
+
+		if ( ! $table_exists ) {
+			return;
+		}
+
+		$today    = current_time( 'Y-m-d' );
+		$updated  = $GLOBALS['wpdb']->query(
+			$GLOBALS['wpdb']->prepare(
+				"UPDATE $tpl_table
+				    SET status = 'published', updated_at = NOW()
+				  WHERE status = 'scheduled'
+				    AND event_date IS NOT NULL
+				    AND event_date != '0000-00-00'
+				    AND event_date <= %s",
+				$today
+			)
+		);
+
+		if ( $updated && defined( 'WP_DEBUG' ) && WP_DEBUG ) {
+			error_log( "[CG Cron] Auto-published $updated scheduled certificate template(s)" );
 		}
 	}
 }

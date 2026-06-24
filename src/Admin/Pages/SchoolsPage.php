@@ -325,6 +325,10 @@ endif;
 					$message = 'School added.';
 				}
 
+				if ( function_exists( 'cg_flush_filter_caches' ) ) {
+					cg_flush_filter_caches();
+				}
+
 				// Phase 6: sync to WP Dynamic Tags if a wp_post_id is linked
 				$wp_post_id = (int) ( $row['wp_post_id'] ?? 0 );
 				if ( $wp_post_id > 0 && function_exists( 'cg_sync_to_dynamic_tags' ) ) {

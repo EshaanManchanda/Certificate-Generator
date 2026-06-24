@@ -224,15 +224,20 @@ function cg_build_recipient_filter_sql( array $filters, string $alias = 't' ): a
 }
 
 /**
- * Invalidate filter dropdown caches when certificate-related posts are saved
+ * Flush all filter dropdown transients. Call after any custom-table write.
  */
+function cg_flush_filter_caches(): void {
+	delete_transient( 'cg_unique_schools' );
+	delete_transient( 'cg_unique_cert_types' );
+	delete_transient( 'cg_unique_years' );
+}
+
+// Also flush on CPT saves (legacy path).
 add_action(
 	'save_post',
 	function ( $post_id ) {
-		if ( in_array( get_post_type( $post_id ), array( 'students', 'teachers', 'schools', 'certificates' ) ) ) {
-			delete_transient( 'cg_unique_schools' );
-			delete_transient( 'cg_unique_cert_types' );
-			delete_transient( 'cg_unique_years' );
+		if ( in_array( get_post_type( $post_id ), array( 'students', 'teachers', 'schools', 'certificates' ), true ) ) {
+			cg_flush_filter_caches();
 		}
 	}
 );

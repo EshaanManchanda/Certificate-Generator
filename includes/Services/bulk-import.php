@@ -263,6 +263,9 @@ function bulk_import_students() {
 						$extra_note .= ' Additional fields saved (data only, beyond template limit): ' . implode( ', ', $data_only_slugs ) . '.';
 					}
 				}
+				if ( function_exists( 'cg_flush_filter_caches' ) ) {
+					cg_flush_filter_caches();
+				}
 				echo '<div class="notice notice-success"><p>Successfully imported ' . $imported_count . ' students!' . esc_html( $extra_note ) . '</p></div>';
 				return; // Stop here — don't re-render the form after a successful import.
 			} else {
@@ -488,6 +491,9 @@ function bulk_import_teachers() {
 				}
 				fclose( $handle );
 
+				if ( function_exists( 'cg_flush_filter_caches' ) ) {
+					cg_flush_filter_caches();
+				}
 				echo '<div class="notice notice-success"><p>Successfully imported ' . $imported_count . ' teachers!</p></div>';
 			} else {
 				echo '<div class="notice notice-error"><p>Unable to open the file. Please check the file and try again.</p></div>';
@@ -692,6 +698,9 @@ function bulk_import_schools() {
 				}
 				fclose( $handle );
 
+				if ( function_exists( 'cg_flush_filter_caches' ) ) {
+					cg_flush_filter_caches();
+				}
 				echo '<div class="notice notice-success"><p>Successfully imported ' . $imported_count . ' schools!</p></div>';
 			} else {
 				echo '<div class="notice notice-error"><p>Unable to open the file. Please check the file and try again.</p></div>';

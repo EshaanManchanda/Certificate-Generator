@@ -284,6 +284,43 @@ function certificate_generator_bulk_send_page() {
 							<p class="cert-help-text"><?php esc_html_e( 'Leave empty to include all types', 'certificate-generator' ); ?></p>
 						</div>
 
+						<!-- Year Filter -->
+						<div class="cert-filter-section">
+							<h3><?php esc_html_e( 'Filter by Year', 'certificate-generator' ); ?></h3>
+							<select name="year[]" id="cert-filter-year" class="cert-filter-select" multiple size="4">
+								<!-- Populated via AJAX -->
+							</select>
+							<p class="cert-help-text"><?php esc_html_e( 'Leave empty to include all years', 'certificate-generator' ); ?></p>
+						</div>
+
+						<!-- Advanced: Issue Date Range -->
+						<div class="cert-filter-section">
+							<h3>
+								<a href="#" id="cert-toggle-date-range" style="text-decoration:none;">
+									&#9654; <?php esc_html_e( 'Advanced: Issue Date Range', 'certificate-generator' ); ?>
+								</a>
+							</h3>
+							<div id="cert-date-range-fields" style="display:none;margin-top:8px;">
+								<label style="display:block;margin-bottom:6px;">
+									<?php esc_html_e( 'From', 'certificate-generator' ); ?>:
+									<input type="date" name="date_from" id="cert-filter-date-from" class="cert-filter-input">
+								</label>
+								<label style="display:block;">
+									<?php esc_html_e( 'To', 'certificate-generator' ); ?>:
+									<input type="date" name="date_to" id="cert-filter-date-to" class="cert-filter-input">
+								</label>
+								<p class="cert-help-text"><?php esc_html_e( 'Filters on issue_date within the selected range', 'certificate-generator' ); ?></p>
+							</div>
+						</div>
+						<script>
+						document.getElementById('cert-toggle-date-range').addEventListener('click', function(e){
+							e.preventDefault();
+							var el = document.getElementById('cert-date-range-fields');
+							el.style.display = el.style.display === 'none' ? 'block' : 'none';
+							this.firstChild.textContent = el.style.display === 'none' ? '► ' : '▼ ';
+						});
+						</script>
+
 						<!-- Email Status Filter -->
 						<div class="cert-filter-section">
 							<h3><?php esc_html_e( 'Email Status', 'certificate-generator' ); ?></h3>
@@ -463,6 +500,9 @@ function certificate_generator_ajax_get_filter_options() {
 		case 'certificate_types':
 			$data = certificate_generator_get_unique_certificate_types();
 			break;
+		case 'years':
+			$data = certificate_generator_get_unique_years();
+			break;
 		case 'emails':
 			$data = certificate_generator_get_unique_emails();
 			break;
@@ -512,6 +552,18 @@ function certificate_generator_ajax_preview_recipients() {
 		: '';
 
 	$filters['skip_already_sent'] = filter_var( $filters['skip_already_sent'] ?? false, FILTER_VALIDATE_BOOLEAN );
+
+	$filters['year'] = isset( $filters['year'] ) && is_array( $filters['year'] )
+		? array_map( 'intval', $filters['year'] )
+		: array();
+
+	$filters['date_from'] = isset( $filters['date_from'] ) && preg_match( '/^\d{4}-\d{2}-\d{2}$/', $filters['date_from'] )
+		? sanitize_text_field( $filters['date_from'] )
+		: '';
+
+	$filters['date_to'] = isset( $filters['date_to'] ) && preg_match( '/^\d{4}-\d{2}-\d{2}$/', $filters['date_to'] )
+		? sanitize_text_field( $filters['date_to'] )
+		: '';
 
 	$filters['limit']  = min( 1000, max( 1, isset( $_POST['limit'] ) ? intval( $_POST['limit'] ) : 100 ) );
 	$filters['offset'] = isset( $_POST['offset'] ) ? intval( $_POST['offset'] ) : 0;
@@ -570,6 +622,18 @@ function certificate_generator_ajax_send_to_filtered() {
 		: '';
 
 	$filters['skip_already_sent'] = filter_var( $filters['skip_already_sent'] ?? false, FILTER_VALIDATE_BOOLEAN );
+
+	$filters['year'] = isset( $filters['year'] ) && is_array( $filters['year'] )
+		? array_map( 'intval', $filters['year'] )
+		: array();
+
+	$filters['date_from'] = isset( $filters['date_from'] ) && preg_match( '/^\d{4}-\d{2}-\d{2}$/', $filters['date_from'] )
+		? sanitize_text_field( $filters['date_from'] )
+		: '';
+
+	$filters['date_to'] = isset( $filters['date_to'] ) && preg_match( '/^\d{4}-\d{2}-\d{2}$/', $filters['date_to'] )
+		? sanitize_text_field( $filters['date_to'] )
+		: '';
 
 	// Retrieve IDs in batches to avoid memory exhaustion on large datasets.
 	// Hard cap: 5000 per request; admin must re-run filters for larger sets.

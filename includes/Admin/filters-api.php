@@ -123,6 +123,107 @@ function certificate_generator_get_unique_certificate_types( $post_types = array
 }
 
 /**
+ * Get unique years (from the year column) across all recipient entity tables.
+ *
+ * @return array Sorted descending list of year integers as strings.
+ */
+function certificate_generator_get_unique_years() {
+	global $wpdb;
+
+	$cache_key = 'cg_unique_years';
+	$cached    = get_transient( $cache_key );
+	if ( $cached !== false ) {
+		return $cached;
+	}
+
+	$results = array();
+
+	if ( class_exists( '\CertificateGenerator\Database\CustomTables' ) ) {
+		$tables = \CertificateGenerator\Database\CustomTables::instance();
+		$parts  = array();
+		foreach ( array( 'students', 'teachers', 'schools' ) as $entity ) {
+			$tbl = $tables->get_table( $entity );
+			if ( $tbl && $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $tbl ) ) === $tbl ) {
+				$parts[] = "SELECT DISTINCT `year` FROM $tbl WHERE `year` IS NOT NULL AND `year` > 0"; // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+			}
+		}
+		if ( ! empty( $parts ) ) {
+			$union   = implode( ' UNION ', $parts ) . ' ORDER BY `year` DESC';
+			$results = $wpdb->get_col( $union ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+		}
+	}
+
+	// CPT fallback: extract year from issue_date meta.
+	if ( empty( $results ) ) {
+		$results = $wpdb->get_col(
+			"SELECT DISTINCT YEAR(STR_TO_DATE(pm.meta_value, '%Y-%m-%d')) AS yr
+			 FROM {$wpdb->postmeta} pm
+			 INNER JOIN {$wpdb->posts} p ON pm.post_id = p.ID
+			 WHERE pm.meta_key = 'issue_date'
+			   AND pm.meta_value != ''
+			   AND p.post_status = 'publish'
+			 HAVING yr > 1970
+			 ORDER BY yr DESC"
+		);
+	}
+
+	$results = array_values( array_filter( $results ) );
+	set_transient( $cache_key, $results, HOUR_IN_SECONDS );
+	return $results;
+}
+
+/**
+ * Build per-entity WHERE fragments and bound params for the shared filter fields.
+ *
+ * Covers: schools, certificate_types, year, date_from, date_to, email_search, emails.
+ * Used by the UNION engine AND by bulk-export single-table handlers so logic stays in one place.
+ *
+ * @param array  $filters Filters array (same keys as get_filtered_recipients defaults).
+ * @param string $alias   Table alias used in the query (default 't').
+ * @return array { string[] $where_fragments, array $params }
+ */
+function cg_build_recipient_filter_sql( array $filters, string $alias = 't' ): array {
+	global $wpdb;
+	$where  = array();
+	$params = array();
+
+	if ( ! empty( $filters['schools'] ) ) {
+		$ph      = implode( ',', array_fill( 0, count( $filters['schools'] ), '%s' ) );
+		$where[] = "{$alias}.school_name IN ($ph)"; // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+		$params  = array_merge( $params, $filters['schools'] );
+	}
+	if ( ! empty( $filters['certificate_types'] ) ) {
+		$ph      = implode( ',', array_fill( 0, count( $filters['certificate_types'] ), '%s' ) );
+		$where[] = "{$alias}.certificate_type IN ($ph)"; // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+		$params  = array_merge( $params, $filters['certificate_types'] );
+	}
+	if ( ! empty( $filters['year'] ) ) {
+		$ph      = implode( ',', array_fill( 0, count( $filters['year'] ), '%d' ) );
+		$where[] = "{$alias}.year IN ($ph)"; // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+		$params  = array_merge( $params, array_map( 'intval', $filters['year'] ) );
+	}
+	if ( ! empty( $filters['date_from'] ) ) {
+		$where[]  = "{$alias}.issue_date >= %s";
+		$params[] = $filters['date_from'];
+	}
+	if ( ! empty( $filters['date_to'] ) ) {
+		$where[]  = "{$alias}.issue_date <= %s";
+		$params[] = $filters['date_to'];
+	}
+	if ( ! empty( $filters['email_search'] ) ) {
+		$where[]  = "{$alias}.email LIKE %s";
+		$params[] = '%' . $wpdb->esc_like( $filters['email_search'] ) . '%';
+	}
+	if ( ! empty( $filters['emails'] ) ) {
+		$ph      = implode( ',', array_fill( 0, count( $filters['emails'] ), '%s' ) );
+		$where[] = "{$alias}.email IN ($ph)"; // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+		$params  = array_merge( $params, $filters['emails'] );
+	}
+
+	return array( $where, $params );
+}
+
+/**
  * Invalidate filter dropdown caches when certificate-related posts are saved
  */
 add_action(
@@ -131,6 +232,7 @@ add_action(
 		if ( in_array( get_post_type( $post_id ), array( 'students', 'teachers', 'schools', 'certificates' ) ) ) {
 			delete_transient( 'cg_unique_schools' );
 			delete_transient( 'cg_unique_cert_types' );
+			delete_transient( 'cg_unique_years' );
 		}
 	}
 );
@@ -219,6 +321,9 @@ function certificate_generator_get_filtered_recipients( $filters = array() ) {
 		'post_types'        => array( 'students', 'teachers', 'schools' ),
 		'schools'           => array(),
 		'certificate_types' => array(),
+		'year'              => array(),
+		'date_from'         => '',
+		'date_to'           => '',
 		'email_status'      => array(),
 		'emails'            => array(),
 		'email_search'      => '',
@@ -255,30 +360,14 @@ function certificate_generator_get_filtered_recipients( $filters = array() ) {
 			// send_email = 1: included in bulk sends. send_email = 0: opt-out (admin individual send bypasses this).
 			$where = array( '1=1', 't.send_email = 1' );
 
-			if ( ! empty( $filters['schools'] ) ) {
-				$ph      = implode( ',', array_fill( 0, count( $filters['schools'] ), '%s' ) );
-				$where[] = "t.school_name IN ($ph)"; // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
-				$params  = array_merge( $params, $filters['schools'] );
-			}
-			if ( ! empty( $filters['certificate_types'] ) ) {
-				$ph      = implode( ',', array_fill( 0, count( $filters['certificate_types'] ), '%s' ) );
-				$where[] = "t.certificate_type IN ($ph)"; // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
-				$params  = array_merge( $params, $filters['certificate_types'] );
-			}
-			if ( ! empty( $filters['email_search'] ) ) {
-				$where[]  = 't.email LIKE %s';
-				$params[] = '%' . $wpdb->esc_like( $filters['email_search'] ) . '%';
-			}
-			if ( ! empty( $filters['emails'] ) ) {
-				$ph      = implode( ',', array_fill( 0, count( $filters['emails'] ), '%s' ) );
-				$where[] = "t.email IN ($ph)"; // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
-				$params  = array_merge( $params, $filters['emails'] );
-			}
+			[ $extra_where, $extra_params ] = cg_build_recipient_filter_sql( $filters, 't' );
+			$where  = array_merge( $where, $extra_where );
+			$params = array_merge( $params, $extra_params );
 
 			$where_sql = implode( ' AND ', $where );
 			$parts[]   = "SELECT t.wp_post_id AS post_id, '$type' AS post_type,
                                 t.$name_col AS name, t.email, t.school_name,
-                                t.certificate_type, t.issue_date,
+                                t.certificate_type, t.issue_date, t.year,
                                 el.status AS email_status, el.sent_at AS last_sent
                          FROM $tbl t  -- phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
                          LEFT JOIN (
@@ -331,12 +420,14 @@ function certificate_generator_get_filtered_recipients( $filters = array() ) {
 	$query = "SELECT DISTINCT p.ID as post_id, p.post_title, p.post_type,
                 pm_email.meta_value as email, pm_name.meta_value as name,
                 pm_school.meta_value as school_name, pm_type.meta_value as certificate_type,
+                pm_issue.meta_value as issue_date,
                 el.status as email_status, el.sent_at as last_sent
               FROM {$wpdb->posts} p
               LEFT JOIN {$wpdb->postmeta} pm_email  ON p.ID = pm_email.post_id  AND pm_email.meta_key  = 'email'
               LEFT JOIN {$wpdb->postmeta} pm_school ON p.ID = pm_school.post_id AND pm_school.meta_key = 'school_name'
               LEFT JOIN {$wpdb->postmeta} pm_type   ON p.ID = pm_type.post_id   AND pm_type.meta_key   = 'certificate_type'
               LEFT JOIN {$wpdb->postmeta} pm_name   ON p.ID = pm_name.post_id   AND pm_name.meta_key   IN ('student_name','teacher_name','school_name')
+              LEFT JOIN {$wpdb->postmeta} pm_issue  ON p.ID = pm_issue.post_id  AND pm_issue.meta_key  = 'issue_date'
               LEFT JOIN (
                   SELECT certificate_id, MAX(sent_at) as sent_at,
                          MAX(CASE WHEN status='sent' THEN 'sent' ELSE NULL END) as status
@@ -372,6 +463,19 @@ function certificate_generator_get_filtered_recipients( $filters = array() ) {
 		$where[]    = "pm_email.meta_value IN ($ph)"; // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 		$cpt_params = array_merge( $cpt_params, $filters['emails'] );
 	}
+	if ( ! empty( $filters['year'] ) ) {
+		$ph         = implode( ',', array_fill( 0, count( $filters['year'] ), '%d' ) );
+		$where[]    = "YEAR(STR_TO_DATE(pm_issue.meta_value, '%Y-%m-%d')) IN ($ph)"; // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+		$cpt_params = array_merge( $cpt_params, array_map( 'intval', $filters['year'] ) );
+	}
+	if ( ! empty( $filters['date_from'] ) ) {
+		$where[]      = 'pm_issue.meta_value >= %s';
+		$cpt_params[] = $filters['date_from'];
+	}
+	if ( ! empty( $filters['date_to'] ) ) {
+		$where[]      = 'pm_issue.meta_value <= %s';
+		$cpt_params[] = $filters['date_to'];
+	}
 
 	$query       .= ' WHERE ' . implode( ' AND ', $where ) . ' ORDER BY p.post_title ASC';
 	$cpt_params[] = $filters['limit'];
@@ -396,6 +500,9 @@ function certificate_generator_count_filtered_recipients( $filters = array() ) {
 		'post_types'        => array( 'students', 'teachers', 'schools' ),
 		'schools'           => array(),
 		'certificate_types' => array(),
+		'year'              => array(),
+		'date_from'         => '',
+		'date_to'           => '',
 		'email_status'      => array(),
 		'emails'            => array(),
 		'email_search'      => '',
@@ -429,25 +536,9 @@ function certificate_generator_count_filtered_recipients( $filters = array() ) {
 			// send_email = 1: included in bulk sends. send_email = 0: opt-out (admin individual send bypasses this).
 			$where = array( '1=1', 't.send_email = 1' );
 
-			if ( ! empty( $filters['schools'] ) ) {
-				$ph      = implode( ',', array_fill( 0, count( $filters['schools'] ), '%s' ) );
-				$where[] = "t.school_name IN ($ph)"; // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
-				$params  = array_merge( $params, $filters['schools'] );
-			}
-			if ( ! empty( $filters['certificate_types'] ) ) {
-				$ph      = implode( ',', array_fill( 0, count( $filters['certificate_types'] ), '%s' ) );
-				$where[] = "t.certificate_type IN ($ph)"; // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
-				$params  = array_merge( $params, $filters['certificate_types'] );
-			}
-			if ( ! empty( $filters['email_search'] ) ) {
-				$where[]  = 't.email LIKE %s';
-				$params[] = '%' . $wpdb->esc_like( $filters['email_search'] ) . '%';
-			}
-			if ( ! empty( $filters['emails'] ) ) {
-				$ph      = implode( ',', array_fill( 0, count( $filters['emails'] ), '%s' ) );
-				$where[] = "t.email IN ($ph)"; // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
-				$params  = array_merge( $params, $filters['emails'] );
-			}
+			[ $extra_where, $extra_params ] = cg_build_recipient_filter_sql( $filters, 't' );
+			$where  = array_merge( $where, $extra_where );
+			$params = array_merge( $params, $extra_params );
 
 			$where_sql = implode( ' AND ', $where );
 			$parts[]   = "SELECT t.wp_post_id AS post_id, '$type' AS post_type,
@@ -503,6 +594,7 @@ function certificate_generator_count_filtered_recipients( $filters = array() ) {
               LEFT JOIN {$wpdb->postmeta} pm_email  ON p.ID = pm_email.post_id  AND pm_email.meta_key  = 'email'
               LEFT JOIN {$wpdb->postmeta} pm_school ON p.ID = pm_school.post_id AND pm_school.meta_key = 'school_name'
               LEFT JOIN {$wpdb->postmeta} pm_type   ON p.ID = pm_type.post_id   AND pm_type.meta_key   = 'certificate_type'
+              LEFT JOIN {$wpdb->postmeta} pm_issue  ON p.ID = pm_issue.post_id  AND pm_issue.meta_key  = 'issue_date'
               LEFT JOIN (
                   SELECT certificate_id, MAX(CASE WHEN status='sent' THEN 'sent' ELSE NULL END) as status
                   FROM $table_name GROUP BY certificate_id
@@ -553,6 +645,19 @@ function certificate_generator_count_filtered_recipients( $filters = array() ) {
 		$ph      = implode( ',', array_fill( 0, count( $filters['emails'] ), '%s' ) );
 		$where[] = "pm_email.meta_value IN ($ph)"; // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 		$params  = array_merge( $params, $filters['emails'] );
+	}
+	if ( ! empty( $filters['year'] ) ) {
+		$ph      = implode( ',', array_fill( 0, count( $filters['year'] ), '%d' ) );
+		$where[] = "YEAR(STR_TO_DATE(pm_issue.meta_value, '%Y-%m-%d')) IN ($ph)"; // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+		$params  = array_merge( $params, array_map( 'intval', $filters['year'] ) );
+	}
+	if ( ! empty( $filters['date_from'] ) ) {
+		$where[]  = 'pm_issue.meta_value >= %s';
+		$params[] = $filters['date_from'];
+	}
+	if ( ! empty( $filters['date_to'] ) ) {
+		$where[]  = 'pm_issue.meta_value <= %s';
+		$params[] = $filters['date_to'];
 	}
 
 	$query .= ' WHERE ' . implode( ' AND ', $where );

@@ -80,8 +80,9 @@ function bulk_import_students() {
 
 				// Check only for missing required fields — never reject extra columns
 				$required_fields = array( 'student_name', 'email', 'school_name', 'issue_date', 'certificate_type' );
+				$known_optional  = array( 'status', 'send_email', 'phone', 'year' ); // system columns not registered as PDF field slots
 				$missing_fields  = array_diff( $required_fields, $header_keys );
-				$extra_columns   = array_values( array_filter( array_diff( $header_keys, $required_fields ) ) );
+				$extra_columns   = array_values( array_filter( array_diff( $header_keys, array_merge( $required_fields, $known_optional ) ) ) );
 
 				if ( ! empty( $missing_fields ) ) {
 					$error_msg  = '<strong>Invalid CSV format.</strong><br><br>';
@@ -206,6 +207,7 @@ function bulk_import_students() {
 							'school_name'      => $school_name,
 							'certificate_type' => $cert_type,
 							'issue_date'       => $_issue_stored ?: null,
+							'year'             => function_exists( 'cg_year_from_issue_date' ) ? cg_year_from_issue_date( $_issue_stored ) : null,
 							'status'           => 'active',
 							'send_email'       => $send_email,
 							'created_at'       => current_time( 'mysql' ),
@@ -357,8 +359,9 @@ function bulk_import_teachers() {
 				);
 
 				// Check only for missing required fields — never reject extra columns
+				$known_optional = array( 'status', 'send_email', 'phone', 'phone_number', 'year' ); // system columns not registered as PDF field slots
 				$missing_fields = array_diff( $required_fields, $header_keys );
-				$extra_columns  = array_values( array_filter( array_diff( $header_keys, $required_fields ) ) );
+				$extra_columns  = array_values( array_filter( array_diff( $header_keys, array_merge( $required_fields, $known_optional ) ) ) );
 
 				if ( ! empty( $missing_fields ) ) {
 					$error_msg  = '<strong>Invalid CSV format.</strong><br><br>';
@@ -458,6 +461,7 @@ function bulk_import_teachers() {
 						'school_name'      => $school_name,
 						'certificate_type' => $cert_type,
 						'issue_date'       => $_t_issue_stored ?: null,
+						'year'             => function_exists( 'cg_year_from_issue_date' ) ? cg_year_from_issue_date( $_t_issue_stored ) : null,
 						'status'           => 'active',
 						'send_email'       => $send_email_t,
 						'created_at'       => current_time( 'mysql' ),
@@ -585,7 +589,7 @@ function bulk_import_schools() {
 
 				// Check only for missing required fields — never reject extra columns
 				// Also treat the unused city/place alias as an allowed extra.
-				$known_optional = array( 'status', 'send_email', $has_place ? 'city' : 'place' );
+				$known_optional = array( 'status', 'send_email', 'year', $has_place ? 'city' : 'place' );
 				$missing_fields = array_diff( $required_fields, $header_keys );
 				$extra_columns  = array_values( array_filter( array_diff( $header_keys, array_merge( $required_fields, $known_optional ) ) ) );
 
@@ -661,6 +665,7 @@ function bulk_import_schools() {
 						'city'             => sanitize_text_field( $school_data['place'] ?? $school_data['city'] ?? '' ),
 						'certificate_type' => $cert_type,
 						'issue_date'       => $_s_issue_stored ?: null,
+						'year'             => function_exists( 'cg_year_from_issue_date' ) ? cg_year_from_issue_date( $_s_issue_stored ) : null,
 						'status'           => 'active',
 						'send_email'       => $send_email_s,
 						'created_at'       => current_time( 'mysql' ),
@@ -835,14 +840,19 @@ function bulk_import_certificates() {
 					return;
 				}
 
-				// Resolve SQL table
+				// Resolve SQL table (required — CPT storage removed in v7)
 				global $wpdb;
 				$tpl_table = null;
-				$use_sql   = false;
 				if ( class_exists( '\CertificateGenerator\Database\CustomTables' ) ) {
 					$tpl_table = \CertificateGenerator\Database\CustomTables::instance()->get_table( 'certificate_templates' );
-					$use_sql   = $tpl_table
-						&& $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $tpl_table ) ) === $tpl_table;
+					if ( $tpl_table && $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $tpl_table ) ) !== $tpl_table ) {
+						$tpl_table = null;
+					}
+				}
+				if ( ! $tpl_table ) {
+					echo '<div class="notice notice-error"><p>Certificate templates SQL table not found. Please deactivate and reactivate the plugin to create required tables.</p></div>';
+					fclose( $handle );
+					return;
 				}
 
 				$max_fields_cnt = class_exists( 'CG_Field_Schema' ) ? CG_Field_Schema::MAX_FIELDS : 15;
@@ -922,8 +932,7 @@ function bulk_import_certificates() {
 						$extra_fields_json[ "field_{$i}_alignment" ]  = in_array( $alignment, array( 'L', 'C', 'R' ), true ) ? $alignment : 'C';
 					}
 
-					// ── Write to SQL table (primary) ──────────────────────────
-					if ( $use_sql ) {
+					// ── Write to SQL table ───────────────────────────────────
 						// Skip duplicate: same certificate_type + event_date already exists
 						$dup_check_sql = "SELECT id FROM $tpl_table WHERE certificate_type = %s AND event_date " .
 							( $event_date ? '= %s' : 'IS NULL' );
@@ -974,62 +983,6 @@ function bulk_import_certificates() {
 						);
 
 						++$imported_count;
-
-					} else {
-						// ── CPT fallback when SQL table unavailable ───────────
-						$existing_query = new WP_Query(
-							array(
-								'post_type'      => 'certificates',
-								'meta_query'     => array(
-									array(
-										'key'   => 'certificate_type',
-										'value' => $certificate_type,
-									),
-									array(
-										'key'   => 'event_date',
-										'value' => $event_date,
-									),
-								),
-								'posts_per_page' => 1,
-								'fields'         => 'ids',
-							)
-						);
-						if ( $existing_query->have_posts() ) {
-							continue;
-						}
-
-						$post_id = wp_insert_post(
-							array(
-								'post_type'   => 'certificates',
-								'post_status' => 'publish',
-							)
-						);
-						if ( ! $post_id ) {
-							continue;
-						}
-
-						// Flat post meta (legacy format)
-						foreach ( $extra_fields_json as $mk => $mv ) {
-							update_post_meta( $post_id, $mk, $mv );
-						}
-						update_post_meta( $post_id, 'certificate_type', $certificate_type );
-						update_post_meta( $post_id, 'event_date', $event_date );
-						update_post_meta( $post_id, 'template_url', $template_url );
-						update_post_meta( $post_id, 'template_orientation', sanitize_key( $certificate_data['template_orientation'] ?? $certificate_data['orientation'] ?? 'landscape' ) );
-						update_post_meta( $post_id, 'font_size', absint( $certificate_data['font_size'] ?? 12 ) );
-						update_post_meta( $post_id, 'font_color', sanitize_hex_color( $certificate_data['font_color'] ?? '#000000' ) ?: '#000000' );
-						update_post_meta( $post_id, 'font_style', sanitize_key( $certificate_data['font_style'] ?? 'helvetica' ) );
-
-						$host = $template_url ? parse_url( $template_url, PHP_URL_HOST ) : null;
-						wp_update_post(
-							array(
-								'ID'         => $post_id,
-								'post_title' => ( $certificate_type ?: 'Certificate' ) . ( $event_date ? ' (' . $event_date . ')' : '' ) . ( $host ? ' - ' . $host : '' ),
-							)
-						);
-
-						++$imported_count;
-					}
 				}
 				fclose( $handle );
 

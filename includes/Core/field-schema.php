@@ -11,6 +11,21 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
+/**
+ * Derive a 4-digit year integer from a stored ISO date string (Y-m-d).
+ * Returns null when the date is empty or not a valid post-1970 year.
+ *
+ * @param string|null $iso_date Date string, e.g. "2025-04-10".
+ * @return int|null
+ */
+function cg_year_from_issue_date( ?string $iso_date ): ?int {
+	if ( empty( $iso_date ) ) {
+		return null;
+	}
+	$year = (int) substr( $iso_date, 0, 4 );
+	return $year > 1970 ? $year : null;
+}
+
 class CG_Field_Schema {
 
 	/** Fields rendered on every certificate (order = slot index). */

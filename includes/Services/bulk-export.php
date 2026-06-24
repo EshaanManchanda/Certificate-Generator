@@ -1,4 +1,97 @@
 <?php
+/**
+ * Render a compact Year / School / Cert-type / Date-range filter bar for export pages.
+ * Echoes HTML form fields only — caller wraps in <form>.
+ */
+function cg_render_export_filter_fields() {
+	$years       = function_exists( 'certificate_generator_get_unique_years' ) ? certificate_generator_get_unique_years() : array();
+	$schools     = function_exists( 'certificate_generator_get_unique_schools' ) ? certificate_generator_get_unique_schools() : array();
+	$cert_types  = function_exists( 'certificate_generator_get_unique_certificate_types' ) ? certificate_generator_get_unique_certificate_types() : array();
+	?>
+	<table class="form-table" style="max-width:700px;">
+		<tr>
+			<th><label><?php esc_html_e( 'Year', 'certificate-generator' ); ?></label></th>
+			<td>
+				<select name="filter_year[]" multiple size="3" style="min-width:120px;">
+					<?php foreach ( $years as $y ) : ?>
+						<option value="<?php echo esc_attr( $y ); ?>"><?php echo esc_html( $y ); ?></option>
+					<?php endforeach; ?>
+				</select>
+				<p class="description"><?php esc_html_e( 'Hold Ctrl/Cmd to select multiple. Leave empty for all years.', 'certificate-generator' ); ?></p>
+			</td>
+		</tr>
+		<tr>
+			<th><label><?php esc_html_e( 'School', 'certificate-generator' ); ?></label></th>
+			<td>
+				<select name="filter_school[]" multiple size="3" style="min-width:200px;">
+					<?php foreach ( $schools as $s ) : ?>
+						<option value="<?php echo esc_attr( $s ); ?>"><?php echo esc_html( $s ); ?></option>
+					<?php endforeach; ?>
+				</select>
+				<p class="description"><?php esc_html_e( 'Leave empty for all schools.', 'certificate-generator' ); ?></p>
+			</td>
+		</tr>
+		<tr>
+			<th><label><?php esc_html_e( 'Certificate Type', 'certificate-generator' ); ?></label></th>
+			<td>
+				<select name="filter_cert_type[]" multiple size="3" style="min-width:200px;">
+					<?php foreach ( $cert_types as $c ) : ?>
+						<option value="<?php echo esc_attr( $c ); ?>"><?php echo esc_html( $c ); ?></option>
+					<?php endforeach; ?>
+				</select>
+				<p class="description"><?php esc_html_e( 'Leave empty for all types.', 'certificate-generator' ); ?></p>
+			</td>
+		</tr>
+		<tr>
+			<th><label><?php esc_html_e( 'Issue Date From', 'certificate-generator' ); ?></label></th>
+			<td><input type="date" name="filter_date_from" value="" style="width:150px;"></td>
+		</tr>
+		<tr>
+			<th><label><?php esc_html_e( 'Issue Date To', 'certificate-generator' ); ?></label></th>
+			<td><input type="date" name="filter_date_to" value="" style="width:150px;"></td>
+		</tr>
+	</table>
+	<?php
+}
+
+/**
+ * Build SQL WHERE + params from export filter POST fields using cg_build_recipient_filter_sql.
+ * Returns [ $where_sql_suffix, $params[] ] where $where_sql_suffix is either '' or ' WHERE ...'.
+ */
+function cg_export_filter_where( string $alias = '' ): array {
+	$filters = array(
+		'schools'           => isset( $_POST['filter_school'] ) && is_array( $_POST['filter_school'] )
+			? array_map( 'sanitize_text_field', $_POST['filter_school'] )
+			: array(),
+		'certificate_types' => isset( $_POST['filter_cert_type'] ) && is_array( $_POST['filter_cert_type'] )
+			? array_map( 'sanitize_text_field', $_POST['filter_cert_type'] )
+			: array(),
+		'year'              => isset( $_POST['filter_year'] ) && is_array( $_POST['filter_year'] )
+			? array_map( 'intval', $_POST['filter_year'] )
+			: array(),
+		'date_from'         => isset( $_POST['filter_date_from'] ) && preg_match( '/^\d{4}-\d{2}-\d{2}$/', $_POST['filter_date_from'] )
+			? sanitize_text_field( $_POST['filter_date_from'] )
+			: '',
+		'date_to'           => isset( $_POST['filter_date_to'] ) && preg_match( '/^\d{4}-\d{2}-\d{2}$/', $_POST['filter_date_to'] )
+			? sanitize_text_field( $_POST['filter_date_to'] )
+			: '',
+		'email_search'      => '',
+		'emails'            => array(),
+	);
+
+	if ( ! function_exists( 'cg_build_recipient_filter_sql' ) ) {
+		return array( '', array() );
+	}
+
+	[ $where_fragments, $params ] = cg_build_recipient_filter_sql( $filters, $alias );
+
+	if ( empty( $where_fragments ) ) {
+		return array( '', array() );
+	}
+
+	return array( ' WHERE ' . implode( ' AND ', $where_fragments ), $params );
+}
+
 // Render the Export Students Page
 function render_bulk_export_students_page() {
 	echo '<div class="wrap">';
@@ -6,6 +99,7 @@ function render_bulk_export_students_page() {
 	echo '<form method="post">';
 	echo wp_nonce_field( 'cg_export_students', '_wpnonce_cg_export', true, false );
 	echo '<input type="hidden" name="export_students" value="1" />';
+	cg_render_export_filter_fields();
 	echo '<p><button type="submit" class="button button-primary">Export to CSV</button></p>';
 	echo '</form>';
 	echo '</div>';
@@ -34,8 +128,12 @@ function bulk_export_students() {
 			) === $student_table;
 
 			if ( $table_exists ) {
-				// Export from SQL tables
-				$rows = $GLOBALS['wpdb']->get_results( "SELECT * FROM $student_table ORDER BY id ASC", ARRAY_A );
+				// Export from SQL tables (with optional filters)
+				[ $where_sql, $where_params ] = cg_export_filter_where();
+				$sql  = "SELECT * FROM $student_table" . $where_sql . ' ORDER BY id ASC'; // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+				$rows = empty( $where_params )
+					? $GLOBALS['wpdb']->get_results( $sql, ARRAY_A ) // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+					: $GLOBALS['wpdb']->get_results( $GLOBALS['wpdb']->prepare( $sql, ...$where_params ), ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 
 				if ( empty( $rows ) ) {
 					add_action(
@@ -65,7 +163,7 @@ function bulk_export_students() {
 				header( 'Expires: 0' );
 
 				$output  = fopen( 'php://output', 'w' );
-				$headers = array( 'student_name', 'email', 'phone', 'school_name', 'certificate_type', 'issue_date', 'status', 'send_email' );
+				$headers = array( 'student_name', 'email', 'phone', 'school_name', 'certificate_type', 'issue_date', 'year', 'status', 'send_email' );
 				$headers = array_merge( $headers, $extra_keys );
 				fputcsv( $output, $headers );
 
@@ -81,6 +179,7 @@ function bulk_export_students() {
 						$row['school_name'],
 						$row['certificate_type'] ?? '',
 						$row['issue_date'] ?? '',
+						$row['year'] ?? '',
 						$row['status'] ?? 'active',
 						isset( $row['send_email'] ) && ! $row['send_email'] ? 'false' : 'true',
 					);
@@ -137,18 +236,22 @@ function bulk_export_students() {
 
 		$output  = fopen( 'php://output', 'w' );
 		$headers = array_merge(
-			array( 'student_name', 'email', 'school_name', 'issue_date', 'certificate_type' ),
+			array( 'student_name', 'email', 'phone', 'school_name', 'certificate_type', 'issue_date', 'status', 'send_email' ),
 			$extra_slugs
 		);
 		fputcsv( $output, $headers );
 
 		foreach ( $students as $student ) {
-			$row = array(
+			$send = get_post_meta( $student->ID, 'send_email', true );
+			$row  = array(
 				get_post_meta( $student->ID, 'student_name', true ),
 				get_post_meta( $student->ID, 'email', true ),
+				get_post_meta( $student->ID, 'phone', true ),
 				get_post_meta( $student->ID, 'school_name', true ),
-				get_post_meta( $student->ID, 'issue_date', true ),
 				get_post_meta( $student->ID, 'certificate_type', true ),
+				get_post_meta( $student->ID, 'issue_date', true ),
+				get_post_meta( $student->ID, 'status', true ) ?: 'active',
+				( $send !== '' && ! $send ) ? 'false' : 'true',
 			);
 			foreach ( $extra_slugs as $slug ) {
 				$row[] = get_post_meta( $student->ID, $slug, true );
@@ -171,6 +274,7 @@ function render_bulk_export_schools_page() {
 	echo '<form method="post">';
 	echo wp_nonce_field( 'cg_export_schools', '_wpnonce_cg_export', true, false );
 	echo '<input type="hidden" name="export_schools" value="1" />';
+	cg_render_export_filter_fields();
 	echo '<p><button type="submit" class="button button-primary">Export to CSV</button></p>';
 	echo '</form>';
 	echo '</div>';
@@ -199,7 +303,11 @@ function bulk_export_schools() {
 			) === $school_table;
 
 			if ( $table_exists ) {
-				$rows = $GLOBALS['wpdb']->get_results( "SELECT * FROM $school_table ORDER BY id ASC", ARRAY_A );
+				[ $where_sql, $where_params ] = cg_export_filter_where();
+				$sql  = "SELECT * FROM $school_table" . $where_sql . ' ORDER BY id ASC'; // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+				$rows = empty( $where_params )
+					? $GLOBALS['wpdb']->get_results( $sql, ARRAY_A ) // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+					: $GLOBALS['wpdb']->get_results( $GLOBALS['wpdb']->prepare( $sql, ...$where_params ), ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 
 				if ( empty( $rows ) ) {
 					add_action(
@@ -228,7 +336,7 @@ function bulk_export_schools() {
 				header( 'Expires: 0' );
 
 				$output  = fopen( 'php://output', 'w' );
-				$headers = array( 'school_name', 'place', 'certificate_type', 'issue_date', 'status', 'send_email' );
+				$headers = array( 'school_name', 'place', 'certificate_type', 'issue_date', 'year', 'status', 'send_email' );
 				$headers = array_merge( $headers, $extra_keys );
 				fputcsv( $output, $headers );
 
@@ -242,6 +350,7 @@ function bulk_export_schools() {
 						$row['city'] ?? '',
 						$row['certificate_type'] ?? '',
 						$row['issue_date'] ?? '',
+						$row['year'] ?? '',
 						$row['status'] ?? 'active',
 						isset( $row['send_email'] ) && ! $row['send_email'] ? 'false' : 'true',
 					);
@@ -280,24 +389,19 @@ function bulk_export_schools() {
 		header( 'Expires: 0' );
 
 		$output  = fopen( 'php://output', 'w' );
-		$headers = array(
-			'school_name',
-			'school_abbreviation',
-			'place',
-			'issue_date',
-			'certificate_type',
-		);
+		$headers = array( 'school_name', 'place', 'certificate_type', 'issue_date', 'status', 'send_email' );
 		fputcsv( $output, $headers );
 
 		foreach ( $schools as $school ) {
-			$row = array(
+			$send = get_post_meta( $school->ID, 'send_email', true );
+			$row  = array(
 				get_post_meta( $school->ID, 'school_name', true ),
-				get_post_meta( $school->ID, 'school_abbreviation', true ),
 				get_post_meta( $school->ID, 'place', true ),
-				get_post_meta( $school->ID, 'issue_date', true ),
 				get_post_meta( $school->ID, 'certificate_type', true ),
+				get_post_meta( $school->ID, 'issue_date', true ),
+				get_post_meta( $school->ID, 'status', true ) ?: 'active',
+				( $send !== '' && ! $send ) ? 'false' : 'true',
 			);
-
 			fputcsv( $output, $row );
 		}
 
@@ -316,6 +420,7 @@ function render_bulk_export_teachers_page() {
 	echo '<form method="post">';
 	echo wp_nonce_field( 'cg_export_teachers', '_wpnonce_cg_export', true, false );
 	echo '<input type="hidden" name="export_teachers" value="1" />';
+	cg_render_export_filter_fields();
 	echo '<p><button type="submit" class="button button-primary">Export to CSV</button></p>';
 	echo '</form>';
 	echo '</div>';
@@ -344,7 +449,11 @@ function bulk_export_teachers() {
 			) === $teacher_table;
 
 			if ( $table_exists ) {
-				$rows = $GLOBALS['wpdb']->get_results( "SELECT * FROM $teacher_table ORDER BY id ASC", ARRAY_A );
+				[ $where_sql, $where_params ] = cg_export_filter_where();
+				$sql  = "SELECT * FROM $teacher_table" . $where_sql . ' ORDER BY id ASC'; // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+				$rows = empty( $where_params )
+					? $GLOBALS['wpdb']->get_results( $sql, ARRAY_A ) // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+					: $GLOBALS['wpdb']->get_results( $GLOBALS['wpdb']->prepare( $sql, ...$where_params ), ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 
 				if ( empty( $rows ) ) {
 					add_action(
@@ -373,7 +482,7 @@ function bulk_export_teachers() {
 				header( 'Expires: 0' );
 
 				$output  = fopen( 'php://output', 'w' );
-				$headers = array( 'teacher_name', 'email', 'phone', 'school_name', 'certificate_type', 'issue_date', 'status', 'send_email' );
+				$headers = array( 'teacher_name', 'email', 'phone', 'school_name', 'certificate_type', 'issue_date', 'year', 'status', 'send_email' );
 				$headers = array_merge( $headers, $extra_keys );
 				fputcsv( $output, $headers );
 
@@ -389,6 +498,7 @@ function bulk_export_teachers() {
 						$row['school_name'],
 						$row['certificate_type'],
 						$row['issue_date'] ?? '',
+						$row['year'] ?? '',
 						$row['status'] ?? 'active',
 						isset( $row['send_email'] ) && ! $row['send_email'] ? 'false' : 'true',
 					);

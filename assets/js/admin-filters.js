@@ -13,6 +13,9 @@
                 post_types: [],
                 schools: [],
                 certificate_types: [],
+                year: [],
+                date_from: '',
+                date_to: '',
                 email_status: [],
                 emails: [],
                 email_search: '',
@@ -78,6 +81,23 @@
             // Certificate type filter changes
             $('#cert-filter-certificate-types').on('change', function() {
                 self.filters.certificate_types = $(this).val() || [];
+                self.debouncedUpdate();
+            });
+
+            // Year filter changes
+            $('#cert-filter-year').on('change', function() {
+                self.filters.year = $(this).val() || [];
+                self.debouncedUpdate();
+            });
+
+            // Issue date range
+            $('#cert-filter-date-from').on('change', function() {
+                self.filters.date_from = $(this).val() || '';
+                self.debouncedUpdate();
+            });
+
+            $('#cert-filter-date-to').on('change', function() {
+                self.filters.date_to = $(this).val() || '';
                 self.debouncedUpdate();
             });
 
@@ -165,6 +185,22 @@
                 success: function(response) {
                     if (response.success) {
                         self.populateSelect('#cert-filter-certificate-types', response.data);
+                    }
+                }
+            });
+
+            // Load unique years
+            $.ajax({
+                url: certFilterAjax.ajaxurl,
+                type: 'POST',
+                data: {
+                    action: 'cert_get_filter_options',
+                    nonce: certFilterAjax.nonce,
+                    option_type: 'years'
+                },
+                success: function(response) {
+                    if (response.success) {
+                        self.populateSelect('#cert-filter-year', response.data);
                     }
                 }
             });
@@ -434,11 +470,16 @@
                 post_types: ['students', 'teachers', 'schools'],
                 schools: [],
                 certificate_types: [],
+                year: [],
+                date_from: '',
+                date_to: '',
                 email_status: ['not_sent', 'sent', 'no_email'], // All statuses by default
                 emails: [],
                 email_search: '',
                 skip_already_sent: false
             };
+            $('#cert-filter-year').val([]).trigger('change');
+            $('#cert-filter-date-from, #cert-filter-date-to').val('');
 
             // Update preview
             this.updatePreview();

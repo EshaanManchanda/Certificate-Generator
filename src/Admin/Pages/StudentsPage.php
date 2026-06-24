@@ -492,6 +492,7 @@ endif;
 					'school_name'      => \sanitize_text_field( $_POST['school_name'] ?? '' ),
 					'certificate_type' => \sanitize_text_field( $_POST['certificate_type'] ?? '' ),
 					'issue_date'       => \sanitize_text_field( $_POST['issue_date'] ?? '' ) ?: null,
+					'year'             => function_exists( 'cg_year_from_issue_date' ) ? cg_year_from_issue_date( \sanitize_text_field( $_POST['issue_date'] ?? '' ) ?: null ) : null,
 					'enrollment_date'  => \sanitize_text_field( $_POST['enrollment_date'] ?? '' ) ?: null,
 					'graduation_date'  => \sanitize_text_field( $_POST['graduation_date'] ?? '' ) ?: null,
 					'status'           => in_array( $_POST['status'] ?? '', array( 'active', 'graduated', 'transferred', 'dropped' ), true ) ? \sanitize_key( $_POST['status'] ) : 'active',

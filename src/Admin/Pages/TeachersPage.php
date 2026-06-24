@@ -306,6 +306,7 @@ endif;
 					'department'       => sanitize_text_field( $_POST['department'] ?? '' ),
 					'certificate_type' => sanitize_text_field( $_POST['certificate_type'] ?? '' ),
 					'issue_date'       => sanitize_text_field( $_POST['issue_date'] ?? '' ) ?: null,
+					'year'             => function_exists( 'cg_year_from_issue_date' ) ? cg_year_from_issue_date( sanitize_text_field( $_POST['issue_date'] ?? '' ) ?: null ) : null,
 					'hire_date'        => sanitize_text_field( $_POST['hire_date'] ?? '' ) ?: null,
 					'status'           => in_array( $_POST['status'] ?? '', array( 'active', 'inactive', 'retired' ), true ) ? sanitize_key( $_POST['status'] ) : 'active',
 					'extra_fields'     => ! empty( $new_extra ) ? wp_json_encode( $new_extra ) : null,

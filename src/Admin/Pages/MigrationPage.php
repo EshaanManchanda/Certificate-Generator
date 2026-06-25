@@ -88,20 +88,31 @@ class MigrationPage {
 		$cpts_cleaned        = get_option( 'cg_cpts_cleaned_up', false );
 
 		// Count remaining legacy CPT posts directly from DB (CPTs are no longer registered).
-		$remaining_cpt_certs = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$wpdb->posts} WHERE post_type = 'certificates'" );
+		$legacy_cpt_types = array( 'students', 'teachers', 'schools', 'certificates' );
+		$placeholders     = implode( ',', array_fill( 0, count( $legacy_cpt_types ), '%s' ) );
+		$remaining_rows   = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT post_type, COUNT(*) AS cnt FROM {$wpdb->posts} WHERE post_type IN ($placeholders) GROUP BY post_type",
+				...$legacy_cpt_types
+			)
+		);
+		$remaining_cpt_counts = array_fill_keys( $legacy_cpt_types, 0 );
+		foreach ( $remaining_rows as $row ) {
+			$remaining_cpt_counts[ $row->post_type ] = (int) $row->cnt;
+		}
+		$total_remaining_cpts = array_sum( $remaining_cpt_counts );
 
-		// Reset the cleaned flag if CPT posts crept back (e.g. re-created by old dual-write).
-		if ( $cpts_cleaned && $remaining_cpt_certs > 0 ) {
+		// Reset the cleaned flag if CPT posts crept back.
+		if ( $cpts_cleaned && $total_remaining_cpts > 0 ) {
 			delete_option( 'cg_cpts_cleaned_up' );
 			$cpts_cleaned = false;
 		}
 
-		// CPT counts: CPTs are no longer registered — always 0.
 		$cpt_counts = array(
-			'students'  => 0,
-			'teachers'  => 0,
-			'schools'   => 0,
-			'templates' => $remaining_cpt_certs,
+			'students'  => $remaining_cpt_counts['students'],
+			'teachers'  => $remaining_cpt_counts['teachers'],
+			'schools'   => $remaining_cpt_counts['schools'],
+			'templates' => $remaining_cpt_counts['certificates'],
 		);
 
 		// Count SQL records
@@ -232,17 +243,32 @@ class MigrationPage {
 
 			<!-- Step 3: Cleanup CPTs (Optional) -->
 			<div class="card" style="min-height: auto; margin-bottom: 20px;">
-				<h2>Step 3: Clean Up CPT Data (Optional)</h2>
+				<h2>Step 3: Clean Up Legacy CPT Data</h2>
 
-				<?php if ( $cpts_cleaned && $remaining_cpt_certs === 0 ) : ?>
+				<?php if ( $cpts_cleaned && $total_remaining_cpts === 0 ) : ?>
 					<div class="notice notice-success inline">
-						<p>✓ CPT data has been cleaned up. Plugin uses SQL tables exclusively.</p>
+						<p>✓ All legacy CPT data cleaned up. Plugin uses SQL tables exclusively.</p>
 					</div>
-				<?php elseif ( $migration_completed || $remaining_cpt_certs > 0 ) : ?>
-					<?php if ( $remaining_cpt_certs > 0 ) : ?>
+				<?php elseif ( $migration_completed || $total_remaining_cpts > 0 ) : ?>
+					<?php if ( $total_remaining_cpts > 0 ) : ?>
 						<div class="notice notice-warning inline">
-							<p>⚠ <strong><?php echo number_format( $remaining_cpt_certs ); ?></strong> legacy <code>certificates</code> CPT post(s) still in the database. Run cleanup to remove them.</p>
+							<p>⚠ <strong><?php echo number_format( $total_remaining_cpts ); ?></strong> legacy CPT post(s) still in <code>wp_posts</code>.</p>
+							<p>These generate public URLs like <code>/students/name-school/</code> that expose data and return broken pages. Clean up to remove them.</p>
 						</div>
+						<table class="widefat" style="margin-top: 10px;">
+							<thead><tr><th>Post Type</th><th>Remaining Posts</th><th>Public URL Pattern</th></tr></thead>
+							<tbody>
+								<?php foreach ( $remaining_cpt_counts as $pt => $count ) : ?>
+									<?php if ( $count > 0 ) : ?>
+									<tr>
+										<td><code><?php echo esc_html( $pt ); ?></code></td>
+										<td><strong><?php echo number_format( $count ); ?></strong></td>
+										<td><code>/<?php echo esc_html( $pt ); ?>/post-slug/</code></td>
+									</tr>
+									<?php endif; ?>
+								<?php endforeach; ?>
+							</tbody>
+						</table>
 					<?php else : ?>
 						<div class="notice notice-info inline">
 							<p>After verifying all data migrated correctly, click below to remove CPT data.</p>
@@ -251,8 +277,8 @@ class MigrationPage {
 					<form method="post" style="margin-top: 15px;">
 						<?php wp_nonce_field( 'cg_cleanup_cpts' ); ?>
 						<button type="submit" name="cg_cleanup_cpts" class="button button-primary"
-								onclick="return confirm('WARNING: This will DELETE all legacy CPT posts. SQL data is unaffected. Continue?');">
-							Clean Up CPT Data
+								onclick="return confirm('WARNING: This will permanently DELETE all legacy CPT posts (students, teachers, schools, certificates) from wp_posts. SQL table data is unaffected. Continue?');">
+							Clean Up All Legacy CPT Data
 						</button>
 					</form>
 				<?php else : ?>
@@ -260,14 +286,54 @@ class MigrationPage {
 				<?php endif; ?>
 			</div>
 
+			<!-- Step 4: Public URL Protection -->
+			<div class="card" style="min-height: auto; margin-bottom: 20px;">
+				<h2>Step 4: Public URL Protection</h2>
+				<?php if ( $total_remaining_cpts === 0 ) : ?>
+					<div class="notice notice-success inline">
+						<p>✓ No legacy CPT posts remain — no public URLs to worry about.</p>
+					</div>
+				<?php else : ?>
+					<div class="notice notice-info inline">
+						<p>While legacy CPT posts exist, the plugin blocks public access to <code>/students/</code>, <code>/teachers/</code>, and <code>/schools/</code> URLs with a 404 response. Clean up CPT data (Step 3) to remove these URLs permanently.</p>
+					</div>
+				<?php endif; ?>
+			</div>
+
+			<!-- Orphan Report -->
+			<?php if ( $total_remaining_cpts > 0 ) : ?>
+			<div class="card" style="min-height: auto; margin-bottom: 20px;">
+				<h2>Orphan Report</h2>
+				<p class="description">CPT posts in <code>wp_posts</code> with no matching row in the SQL table (by email for students/teachers, school_name for schools, certificate_type+event_date for templates).</p>
+				<?php $orphans = $this->detect_orphans( $tables ); ?>
+				<?php if ( array_sum( array_column( $orphans, 'cpt_only' ) ) === 0 && array_sum( array_column( $orphans, 'sql_only' ) ) === 0 ) : ?>
+					<div class="notice notice-success inline"><p>✓ No orphans detected — all CPT posts have matching SQL rows.</p></div>
+				<?php else : ?>
+					<table class="widefat">
+						<thead><tr><th>Entity</th><th>CPT-only (no SQL match)</th><th>SQL-only (no CPT match)</th></tr></thead>
+						<tbody>
+							<?php foreach ( $orphans as $entity => $counts ) : ?>
+								<tr>
+									<td><?php echo esc_html( ucfirst( $entity ) ); ?></td>
+									<td><?php echo $counts['cpt_only'] > 0 ? '<strong style="color:#d63638;">' . number_format( $counts['cpt_only'] ) . '</strong>' : '0'; ?></td>
+									<td><?php echo $counts['sql_only'] > 0 ? '<strong style="color:#dba617;">' . number_format( $counts['sql_only'] ) . '</strong>' : '0'; ?></td>
+								</tr>
+							<?php endforeach; ?>
+						</tbody>
+					</table>
+					<p class="description" style="margin-top: 10px;">CPT-only orphans are safe to delete via "Clean Up" above. SQL-only records are expected after cleanup.</p>
+				<?php endif; ?>
+			</div>
+			<?php endif; ?>
+
 			<div class="card" style="margin-top: 20px;">
 				<h2>Migration Process</h2>
 				<ol>
-					<li><strong>Tables Created:</strong> Custom SQL tables are created automatically.</li>
+					<li><strong>Tables Created:</strong> Custom SQL tables are created automatically on activation.</li>
 					<li><strong>Data Copied:</strong> All CPT data is copied to SQL tables (CPT data preserved).</li>
 					<li><strong>Verify:</strong> Check record counts match between CPT and SQL.</li>
-					<li><strong>Clean Up (Optional):</strong> Remove CPT data once verified.</li>
-					<li><strong>Real-time Sync:</strong> New saves are mirrored to both CPT and SQL until cleanup.</li>
+					<li><strong>Clean Up:</strong> Remove legacy CPT posts from <code>wp_posts</code> — eliminates public URLs and orphaned data.</li>
+					<li><strong>URL Protection:</strong> While legacy posts exist, public access is blocked with a 404 response.</li>
 				</ol>
 			</div>
 		</div>
@@ -344,20 +410,66 @@ class MigrationPage {
 		return $fixed;
 	}
 
+	private function detect_orphans( CustomTables $tables ): array {
+		global $wpdb;
+
+		$results = array(
+			'students'  => array( 'cpt_only' => 0, 'sql_only' => 0 ),
+			'teachers'  => array( 'cpt_only' => 0, 'sql_only' => 0 ),
+			'schools'   => array( 'cpt_only' => 0, 'sql_only' => 0 ),
+			'templates' => array( 'cpt_only' => 0, 'sql_only' => 0 ),
+		);
+
+		$checks = array(
+			'students'  => array( 'cpt' => 'students', 'sql' => 'students', 'meta_key' => 'email', 'sql_col' => 'email' ),
+			'teachers'  => array( 'cpt' => 'teachers', 'sql' => 'teachers', 'meta_key' => 'email', 'sql_col' => 'email' ),
+			'schools'   => array( 'cpt' => 'schools', 'sql' => 'schools', 'meta_key' => 'school_name', 'sql_col' => 'school_name' ),
+			'templates' => array( 'cpt' => 'certificates', 'sql' => 'certificate_templates', 'meta_key' => 'certificate_type', 'sql_col' => 'certificate_type' ),
+		);
+
+		foreach ( $checks as $entity => $cfg ) {
+			$sql_table = $tables->get_table( $cfg['sql'] );
+			if ( ! $sql_table || $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $sql_table ) ) !== $sql_table ) {
+				continue;
+			}
+
+			$cpt_values = $wpdb->get_col( $wpdb->prepare(
+				"SELECT pm.meta_value FROM {$wpdb->postmeta} pm
+				 INNER JOIN {$wpdb->posts} p ON p.ID = pm.post_id
+				 WHERE p.post_type = %s AND pm.meta_key = %s AND pm.meta_value != ''",
+				$cfg['cpt'],
+				$cfg['meta_key']
+			) );
+
+			$sql_values = $wpdb->get_col( "SELECT {$cfg['sql_col']} FROM $sql_table WHERE {$cfg['sql_col']} != ''" ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+
+			$cpt_set = array_flip( $cpt_values );
+			$sql_set = array_flip( $sql_values );
+
+			$results[ $entity ]['cpt_only'] = count( array_diff_key( $cpt_set, $sql_set ) );
+			$results[ $entity ]['sql_only'] = count( array_diff_key( $sql_set, $cpt_set ) );
+		}
+
+		return $results;
+	}
+
 	private function cleanup_cpts(): void {
 		global $wpdb;
 
-		$post_types = array( 'students', 'teachers', 'schools', 'certificates' );
-		foreach ( $post_types as $pt ) {
-			$post_ids = $wpdb->get_col(
-				$wpdb->prepare(
-					"SELECT ID FROM $wpdb->posts WHERE post_type = %s",
-					$pt
-				)
-			);
-			foreach ( $post_ids as $post_id ) {
-				wp_delete_post( $post_id, true );
-			}
+		$post_types   = array( 'students', 'teachers', 'schools', 'certificates' );
+		$placeholders = implode( ',', array_fill( 0, count( $post_types ), '%s' ) );
+
+		$post_ids = $wpdb->get_col(
+			$wpdb->prepare(
+				"SELECT ID FROM {$wpdb->posts} WHERE post_type IN ($placeholders)",
+				...$post_types
+			)
+		);
+
+		if ( ! empty( $post_ids ) ) {
+			$id_list = implode( ',', array_map( 'absint', $post_ids ) );
+			$wpdb->query( "DELETE FROM {$wpdb->postmeta} WHERE post_id IN ($id_list)" ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+			$wpdb->query( "DELETE FROM {$wpdb->posts} WHERE ID IN ($id_list)" ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
 		}
 
 		update_option( 'cg_cpts_cleaned_up', true );

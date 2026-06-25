@@ -103,7 +103,8 @@ class CustomTables {
             phone VARCHAR(50) DEFAULT NULL,
             school_id BIGINT UNSIGNED DEFAULT NULL,
             school_name VARCHAR(255) DEFAULT NULL,
-            certificate_type VARCHAR(255) DEFAULT NULL,
+            certificate_type VARCHAR(255) NOT NULL DEFAULT '',
+            year YEAR DEFAULT NULL,
             issue_date DATE DEFAULT NULL,
             serial_number VARCHAR(100) DEFAULT NULL,
             enrollment_date DATE DEFAULT NULL,
@@ -119,7 +120,9 @@ class CustomTables {
             INDEX idx_school_id (school_id),
             INDEX idx_status (status),
             INDEX idx_student_name (student_name),
-            INDEX idx_serial_number (serial_number)
+            INDEX idx_serial_number (serial_number),
+            INDEX idx_certificate_type (certificate_type),
+            INDEX idx_year (year)
         ) $charset_collate;";
 
 		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
@@ -140,7 +143,8 @@ class CustomTables {
             school_id BIGINT UNSIGNED DEFAULT NULL,
             school_name VARCHAR(255) DEFAULT NULL,
             department VARCHAR(100) DEFAULT NULL,
-            certificate_type VARCHAR(255) DEFAULT NULL,
+            certificate_type VARCHAR(255) NOT NULL DEFAULT '',
+            year YEAR DEFAULT NULL,
             issue_date DATE DEFAULT NULL,
             serial_number VARCHAR(100) DEFAULT NULL,
             hire_date DATE DEFAULT NULL,
@@ -155,7 +159,9 @@ class CustomTables {
             INDEX idx_school_id (school_id),
             INDEX idx_status (status),
             INDEX idx_teacher_name (teacher_name),
-            INDEX idx_serial_number (serial_number)
+            INDEX idx_serial_number (serial_number),
+            INDEX idx_certificate_type (certificate_type),
+            INDEX idx_year (year)
         ) $charset_collate;";
 
 		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
@@ -180,7 +186,8 @@ class CustomTables {
             email VARCHAR(255) DEFAULT NULL,
             website VARCHAR(255) DEFAULT NULL,
             principal_name VARCHAR(255) DEFAULT NULL,
-            certificate_type VARCHAR(255) DEFAULT NULL,
+            certificate_type VARCHAR(255) NOT NULL DEFAULT '',
+            year YEAR DEFAULT NULL,
             issue_date DATE DEFAULT NULL,
             serial_number VARCHAR(100) DEFAULT NULL,
             status ENUM('active','inactive') DEFAULT 'active',
@@ -193,7 +200,9 @@ class CustomTables {
             INDEX idx_school_name (school_name),
             INDEX idx_status (status),
             INDEX idx_city (city),
-            INDEX idx_serial_number (serial_number)
+            INDEX idx_serial_number (serial_number),
+            INDEX idx_certificate_type (certificate_type),
+            INDEX idx_year (year)
         ) $charset_collate;";
 
 		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
@@ -210,6 +219,7 @@ class CustomTables {
             wp_post_id BIGINT UNSIGNED DEFAULT NULL,
             template_name VARCHAR(255) NOT NULL,
             certificate_type VARCHAR(100) NOT NULL,
+            year YEAR DEFAULT NULL,
             event_date DATE DEFAULT NULL,
             template_url VARCHAR(500) DEFAULT NULL,
             orientation ENUM('portrait','landscape') DEFAULT 'landscape',
@@ -237,6 +247,7 @@ class CustomTables {
             PRIMARY KEY (id),
             INDEX idx_wp_post_id (wp_post_id),
             INDEX idx_certificate_type (certificate_type),
+            INDEX idx_year (year),
             INDEX idx_event_date (event_date),
             INDEX idx_status (status),
             INDEX idx_type_date (certificate_type, event_date)

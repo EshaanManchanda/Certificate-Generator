@@ -2,7 +2,7 @@
 
 > A production-ready WordPress plugin for managing, generating, and bulk-sending PDF certificates for students, teachers, and schools — with QR codes, serial numbers, expiration tracking, analytics, and custom SQL tables.
 
-**Version:** 7.0.0 &nbsp;|&nbsp; **Author:** [Eshaan Manchanda](https://www.linkedin.com/in/eshaan-manchanda/) &nbsp;|&nbsp; **License:** GPL-2.0+ &nbsp;|&nbsp; **Requires:** WordPress 6.0+, PHP 7.4+
+**Version:** 7.0.0 &nbsp;|&nbsp; **Author:** [Eshaan Manchanda](https://www.linkedin.com/in/eshaan-manchanda/) &nbsp;|&nbsp; **License:** GPL-2.0+ &nbsp;|&nbsp; **Requires:** WordPress 6.0+, PHP 8.0+
 
 ---
 
@@ -14,7 +14,7 @@ Most certificate plugins are simple — they stamp a name on a template and call
 - **QR codes** on every certificate link to a live verification page
 - **Serial numbers** uniquely identify each certificate and are verifiable via REST API
 - **Expiration tracking** so certificates can have real validity periods
-- **SQL-first architecture** for performance at scale, with full CPT fallback
+- **SQL-only architecture** — custom tables with full CPT-to-SQL migration tooling
 - **Analytics dashboard** with charts and CSV exports
 
 ---
@@ -32,8 +32,8 @@ Most certificate plugins are simple — they stamp a name on a template and call
 | Bulk Import | CSV upload for students, teachers, schools |
 | Bulk Export | CSV export with filters |
 | Analytics | Charts + expiration/monthly CSV reports |
-| SQL Tables | 11 custom tables, CPT mirror, live sync |
-| CPT Migration | One-click + rollback support |
+| SQL Tables | 11 custom tables, SQL-only storage |
+| CPT Migration | One-click migration + rollback + cleanup |
 | Public Pages | Shortcode search forms for all entity types |
 
 ---
@@ -240,7 +240,7 @@ Configure subject line, HTML body, and from-address in **Certificates → Settin
 
 ### Import Page
 
-Navigate to **Certificates → Bulk Import**. Upload a CSV file — the plugin validates columns, previews the data, and inserts records into both CPT and SQL tables simultaneously.
+Navigate to **Certificates → Bulk Import**. Upload a CSV file — the plugin validates columns, previews the data, and inserts records into SQL tables.
 
 ![Bulk Import](_dev/screenshots/bulk-import.png)
 
@@ -480,7 +480,7 @@ Certificate-Generator-v7/
 ├── includes/                      # Production code (domain-organized)
 │   ├── Admin/                     # Admin pages (analytics, bulk-email, columns, settings…)
 │   ├── API/                       # REST API endpoints
-│   ├── Core/                      # CPT registration, security, font manager, license
+│   ├── Core/                      # Security, font manager, license
 │   ├── Cron/                      # Scheduled jobs
 │   ├── Database/                  # DB migrator
 │   ├── Email/                     # Email functions, log, queue, rate-limiter
@@ -492,7 +492,7 @@ Certificate-Generator-v7/
 │   ├── API/                       # REST controllers + rate-limit middleware
 │   ├── Certificate/               # Expiration logic
 │   ├── Core/                      # DI container, config, Plugin bootstrap
-│   ├── Database/                  # Repository pattern, migrations, CPT→SQL
+│   ├── Database/                  # Repository pattern, migrations
 │   ├── Email/                     # Mailer wrapper
 │   ├── Exception/                 # Custom exceptions
 │   ├── Helpers/                   # Sanitizer, Formatter
@@ -516,9 +516,49 @@ Certificate-Generator-v7/
 
 ---
 
+## Architecture
+
+The plugin uses a **strangler-fig migration** pattern: legacy procedural code in `includes/` coexists with a modern PSR-4 OOP layer in `src/`. New features are built behind **feature flags** (all default OFF), allowing instant rollback.
+
+### Feature Flags
+
+| Flag | Controls | Status |
+|------|----------|--------|
+| `CG_USE_NEW_PDF` | PdfGenerator facade | Built (Phase 1) |
+| `CG_USE_NEW_ZIP` | ZipService facade | Built (Phase 2) |
+| `CG_USE_REPOSITORIES` | Repository layer for DB reads | Built (Phase 3) |
+| `CG_USE_EVENTS` | Event-driven email logging + badge cache | Built (Phase 4) |
+| `CG_USE_DTO` | EmailData value objects | Planned (Phase 5) |
+
+### Test Suite
+
+10 unit test files covering repositories, services, and event listeners. Run with:
+```bash
+./vendor/bin/phpunit
+```
+
+---
+
+## v8 Roadmap
+
+Phases -1 through 4 are complete. Remaining work:
+
+| Phase | Goal | Description |
+|-------|------|-------------|
+| 5 | EmailData DTO | Typed value objects for email pipeline |
+| 6 | DI Container | Wire `src/` classes via `Core/Container.php` |
+| 7 | Template Resolver | Single template lookup path, replacing scattered resolution |
+| 8 | Migrations System | Versioned DB schema changes |
+| 9 | Health Page | Admin diagnostics: table integrity, flag status, queue health |
+| 10 | Cleanup & Release | Remove legacy shims, flip flags ON, bump to v8.0 |
+
+---
+
 ## Changelog
 
-### 7.0.0
+### 7.0.0 (Current)
+
+**Core Features:**
 - QR code generation with configurable size, position, error correction
 - Unique serial number system — sequential, prefixed, date-stamped, resettable
 - REST verification API (`/verify/{serial}`)
@@ -526,13 +566,26 @@ Certificate-Generator-v7/
 - Analytics dashboard: 6 KPI cards, 4 charts, 2 CSV exports
 - Bulk serial assignment for existing records
 - Public verification shortcode with QR auto-trigger (URL `?serial_number=`)
-- CPT → SQL migration with one-click rollback
-- SQL-first reads in admin list columns and email functions
 - Duplicate serial prevention: same student + certificate type reuses existing serial
 - Date display standardized to dd-mm-yyyy format everywhere
 - phpqrcode PHP 8.x deprecation warnings suppressed
-- Domain-organized `includes/` structure
+
+**Architecture (v8 Phases -1 → 4):**
+- Complete CPT → SQL migration — plugin now SQL-only, CPTs fully deregistered
+- CPT migration admin page with run/verify/rollback/cleanup
+- Legacy CPT public URL blocking (404 for orphaned `/students/`, `/teachers/`, `/schools/` routes)
+- PdfGenerator facade behind `CG_USE_NEW_PDF` flag
+- ZipService facade behind `CG_USE_NEW_ZIP` flag — consolidated 6 inline ZIP builders
+- Repository layer (Certificate, EmailLog, Queue, User) behind `CG_USE_REPOSITORIES`
+- Event-driven email logging with 3 listeners behind `CG_USE_EVENTS`
 - PSR-4 `src/` architecture with DI container, typed classes, custom exceptions
+- Domain-organized `includes/` structure
+- PHPCS compliance (1,679 auto-fixed violations)
+- PHPStan level compliance (45 → 0 errors)
+- Default email templates seeded on activation
+- Hourly auto-publish cron for scheduled templates
+- Publish-now and delete-all-data AJAX actions
+- CSV export→import round-trip validated for all entity types
 
 ### 6.1.0
 - Initial release: certificate generation, bulk email, custom post types

@@ -9,10 +9,7 @@ use CertificateGenerator\Exception\CertificateGenerationException;
 use CertificateGenerator\Models\Certificate;
 
 /**
- * Core certificate generation orchestrator.
- *
- * Coordinates template resolution, PDF generation, serial numbers,
- * QR codes, database persistence, and email delivery.
+ * @deprecated v8 — Zero callers. Live logic is in includes/Services/certificate-search.php and includes/Email/functions.php. Will be deleted in v9.
  */
 class CertificateGeneratorService {
 

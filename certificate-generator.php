@@ -61,6 +61,18 @@ function cg_format_date( ?string $date_string, bool $include_time = false ): str
 
 // Enqueue CSS and JS for Admin UI
 function custom_admin_assets( $hook ) {
+	$is_cg_page = strpos( $hook, 'cg-' ) !== false
+		|| strpos( $hook, 'certificate' ) !== false
+		|| strpos( $hook, 'students' ) !== false
+		|| strpos( $hook, 'teachers' ) !== false
+		|| strpos( $hook, 'schools' ) !== false
+		|| $hook === 'post.php'
+		|| $hook === 'post-new.php';
+
+	if ( ! $is_cg_page ) {
+		return;
+	}
+
 	wp_enqueue_style( 'custom-admin-css', plugin_dir_url( __FILE__ ) . 'assets/css/admin-style.css' );
 	wp_enqueue_script( 'custom-admin-js', plugin_dir_url( __FILE__ ) . 'assets/js/admin-script.js', array( 'jquery' ), '7.0.0', true );
 
@@ -605,6 +617,19 @@ function certificate_generator_uninstall() {
 	wp_clear_scheduled_hook( 'cg_cleanup_old_certificates' );
 }
 register_uninstall_hook( __FILE__, 'certificate_generator_uninstall' );
+
+// ── Block public access to legacy CPT slugs (students/teachers/schools) ──────
+add_action(
+	'template_redirect',
+	function () {
+		if ( is_singular( array( 'students', 'teachers', 'schools', 'certificates' ) ) ) {
+			global $wp_query;
+			$wp_query->set_404();
+			status_header( 404 );
+			nocache_headers();
+		}
+	}
+);
 
 // ── Plugins-page modal: ask "Keep data?" before deletion ─────────────────────
 add_action(

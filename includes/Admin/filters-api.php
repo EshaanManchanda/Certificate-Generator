@@ -186,37 +186,38 @@ function cg_build_recipient_filter_sql( array $filters, string $alias = 't' ): a
 	global $wpdb;
 	$where  = array();
 	$params = array();
+	$p      = $alias !== '' ? "{$alias}." : '';
 
 	if ( ! empty( $filters['schools'] ) ) {
 		$ph      = implode( ',', array_fill( 0, count( $filters['schools'] ), '%s' ) );
-		$where[] = "{$alias}.school_name IN ($ph)"; // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+		$where[] = "{$p}school_name IN ($ph)"; // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 		$params  = array_merge( $params, $filters['schools'] );
 	}
 	if ( ! empty( $filters['certificate_types'] ) ) {
 		$ph      = implode( ',', array_fill( 0, count( $filters['certificate_types'] ), '%s' ) );
-		$where[] = "{$alias}.certificate_type IN ($ph)"; // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+		$where[] = "{$p}certificate_type IN ($ph)"; // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 		$params  = array_merge( $params, $filters['certificate_types'] );
 	}
 	if ( ! empty( $filters['year'] ) ) {
 		$ph      = implode( ',', array_fill( 0, count( $filters['year'] ), '%d' ) );
-		$where[] = "{$alias}.year IN ($ph)"; // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+		$where[] = "{$p}year IN ($ph)"; // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 		$params  = array_merge( $params, array_map( 'intval', $filters['year'] ) );
 	}
 	if ( ! empty( $filters['date_from'] ) ) {
-		$where[]  = "{$alias}.issue_date >= %s";
+		$where[]  = "{$p}issue_date >= %s";
 		$params[] = $filters['date_from'];
 	}
 	if ( ! empty( $filters['date_to'] ) ) {
-		$where[]  = "{$alias}.issue_date <= %s";
+		$where[]  = "{$p}issue_date <= %s";
 		$params[] = $filters['date_to'];
 	}
 	if ( ! empty( $filters['email_search'] ) ) {
-		$where[]  = "{$alias}.email LIKE %s";
+		$where[]  = "{$p}email LIKE %s";
 		$params[] = '%' . $wpdb->esc_like( $filters['email_search'] ) . '%';
 	}
 	if ( ! empty( $filters['emails'] ) ) {
 		$ph      = implode( ',', array_fill( 0, count( $filters['emails'] ), '%s' ) );
-		$where[] = "{$alias}.email IN ($ph)"; // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+		$where[] = "{$p}email IN ($ph)"; // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 		$params  = array_merge( $params, $filters['emails'] );
 	}
 

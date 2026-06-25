@@ -157,7 +157,7 @@ function certificate_generator_api_permission_check( $request ) {
 			'FAILED_AUTH',
 			array(
 				'ip'         => sanitize_text_field( $_SERVER['REMOTE_ADDR'] ?? 'unknown' ),
-				'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? 'unknown',
+				'user_agent' => sanitize_text_field( $_SERVER['HTTP_USER_AGENT'] ?? 'unknown' ),
 				'timestamp'  => current_time( 'mysql' ),
 			)
 		);
@@ -211,7 +211,7 @@ function certificate_generator_issue_certificate_callback( $request ) {
 	}
 }
 
-function certificate_generator_issue_from_table( string $email, $request ): WP_REST_Response {
+function certificate_generator_issue_from_table( string $email, $request ): WP_REST_Response|WP_Error {
 	global $wpdb;
 	$studentsTable     = $wpdb->prefix . 'cg_students';
 	$certificatesTable = $wpdb->prefix . 'cg_certificates';
@@ -408,7 +408,7 @@ function certificate_generator_health_check_callback( $request ) {
 	return new WP_REST_Response(
 		array(
 			'status'            => 'healthy',
-			'plugin_version'    => '3.3.1',
+			'plugin_version'    => defined( 'CERTIFICATE_GENERATOR_VERSION' ) ? CERTIFICATE_GENERATOR_VERSION : '7.0.0',
 			'wordpress_version' => get_bloginfo( 'version' ),
 			'timestamp'         => current_time( 'c' ),
 		),
@@ -452,63 +452,6 @@ function certificate_generator_get_certificate_by_type( $certificate_type ) {
 	return ! empty( $certificates ) ? $certificates[0] : false;
 }
 
-/**
- * Get or create student record
- */
-function certificate_generator_get_or_create_student( $email, $name = '', $school_name = '' ) {
-	// First, try to find existing student by email
-	$existing_students = get_posts(
-		array(
-			'post_type'      => 'student',
-			'meta_query'     => array(
-				array(
-					'key'     => 'student_email',
-					'value'   => $email,
-					'compare' => '=',
-				),
-			),
-			'posts_per_page' => 1,
-		)
-	);
-
-	if ( ! empty( $existing_students ) ) {
-		return $existing_students[0]->ID;
-	}
-
-	// Create new student if not found
-	$student_data = array(
-		'post_title'  => $name ?: $email,
-		'post_type'   => 'student',
-		'post_status' => 'publish',
-		'meta_input'  => array(
-			'student_email' => $email,
-			'student_name'  => $name,
-			'school_name'   => $school_name,
-		),
-	);
-
-	$student_id = wp_insert_post( $student_data );
-
-	if ( is_wp_error( $student_id ) ) {
-		return new WP_Error(
-			'student_creation_failed',
-			'Failed to create student record: ' . $student_id->get_error_message(),
-			array( 'status' => 500 )
-		);
-	}
-
-	return $student_id;
-}
-
-/**
- * Check for existing certificate
- */
-function certificate_generator_check_existing_certificate( $student_id, $certificate_id ) {
-	// This would depend on how you track issued certificates
-	// You might have a custom table or use post meta
-	// For now, returning false to allow certificate generation
-	return false;
-}
 
 /**
  * Generate certificate PDF for API requests

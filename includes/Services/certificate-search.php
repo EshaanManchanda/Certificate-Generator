@@ -845,7 +845,7 @@ function _cg_generate_pdf_with_data_impl( $post_data ) {
 	// Set $visual_debug = true to overlay field-boundary markers on the PDF.
 	// MUST be false in production — it draws red boxes / coloured dots on certs.
 	// Follows WP_DEBUG: set WP_DEBUG = true in wp-config.php to enable visual markers.
-	$visual_debug = true; // set second operand true only when actively debugging layout
+	$visual_debug = defined( 'WP_DEBUG' ) && WP_DEBUG; // overlay markers only in debug mode
 
 	cg_debug_log( 'Post Data: ' . print_r( $post_data, true ) );
 
@@ -3025,20 +3025,9 @@ function school_search_shortcode() {
 // Shortcode to search for student certificates
 add_shortcode( 'student_search', 'scs_student_search_shortcode' );
 function scs_student_search_shortcode() {
-	// Force log
-	error_log( 'DEBUG: student_search shortcode called' );
-	$debug_output = '';
-
 	if ( isset( $_GET['student_email'] ) ) {
 		$email = sanitize_email( $_GET['student_email'] );
 
-		// Force log and capture debug info
-		error_log( 'DEBUG: student_search called with email: ' . $email );
-		$debug_output .= "<!-- DEBUG: email = $email -->";
-
-		$debug_output .= '<!-- DEBUG: CustomTables class exists: ' . ( class_exists( '\CertificateGenerator\Database\CustomTables' ) ? 'yes' : 'no' ) . ' -->';
-
-		// Debug: log the email being searched
 		cg_debug_log( 'Student search: looking for email = ' . $email );
 
 		// SQL-first: query custom tables
@@ -3541,10 +3530,6 @@ function scs_student_search_shortcode() {
 		$output .= '</div>'; // End container
 	}
 
-	// Prepend debug info to output
-	if ( ! empty( $debug_output ) ) {
-		$output = $debug_output . $output;
-	}
 
 	return $output;
 }

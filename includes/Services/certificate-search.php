@@ -845,7 +845,7 @@ function _cg_generate_pdf_with_data_impl( $post_data ) {
 	// Set $visual_debug = true to overlay field-boundary markers on the PDF.
 	// MUST be false in production — it draws red boxes / coloured dots on certs.
 	// Follows WP_DEBUG: set WP_DEBUG = true in wp-config.php to enable visual markers.
-	$visual_debug = defined( 'WP_DEBUG' ) && WP_DEBUG; // overlay markers only in debug mode
+	$visual_debug = true; // overlay markers only in debug mode
 
 	cg_debug_log( 'Post Data: ' . print_r( $post_data, true ) );
 

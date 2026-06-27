@@ -120,13 +120,13 @@ function handle_individual_certificate_download() {
 // AJAX handler for progress updates
 function certificate_generation_progress_handler() {
 	// Verify nonce for security
-	if ( ! isset( $_POST['nonce'] ) || ! wp_verify_nonce( $_POST['nonce'], 'certificate_generation_progress_nonce' ) ) {
+	if ( ! isset( $_POST['nonce'] ) || ! wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['nonce'] ) ), 'certificate_generation_progress_nonce' ) ) {
 		wp_send_json_error( 'Invalid security token' );
 		wp_die();
 	}
 
 	// Get session ID from request
-	$session_id = sanitize_text_field( $_POST['session_id'] );
+	$session_id = sanitize_text_field( wp_unslash( $_POST['session_id'] ?? '' ) );
 
 	// Get progress data from transient
 	$progress_data = get_transient( 'certificate_progress_' . $session_id );
@@ -188,7 +188,7 @@ function school_bulk_certificate_download_shortcode() {
 
 	// Check if form is submitted
 	if ( isset( $_GET['school_name'] ) ) {
-		$school_name = sanitize_text_field( $_GET['school_name'] );
+		$school_name = sanitize_text_field( wp_unslash( $_GET['school_name'] ) );
 
 		// Verify school exists - enhanced matching for better reliability
 		$school_args = array(
@@ -353,12 +353,15 @@ function school_bulk_certificate_download_shortcode() {
 						// Format the issue date if it exists
 						$formatted_date = ! empty( $issue_date ) ? cg_format_date( $issue_date ) : 'Unknown';
 
-						// Generate individual certificate URL
-						$certificate_url = add_query_arg(
-							array(
-								'student_id' => $student_id,
-								'action'     => 'download_certificate',
-							)
+						// Generate individual certificate URL (nonce required by handler).
+						$certificate_url = wp_nonce_url(
+							add_query_arg(
+								array(
+									'student_id' => $student_id,
+									'action'     => 'download_certificate',
+								)
+							),
+							'cg_download_cert_' . $student_id
 						);
 
 						$output .= '<tr style="border-bottom: 1px solid #f0f0f0;">';
@@ -424,7 +427,7 @@ function school_bulk_certificate_download_shortcode() {
 				$progress_html .= '<div class="progress-counter">0 of ' . $total_students . ' certificates processed</div>';
 				$progress_html .= '</div>';
 
-				echo $progress_html;
+				echo $progress_html; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
 
 				// Flush output buffer to show progress bar immediately
 				if ( ob_get_level() > 0 ) {
@@ -641,20 +644,8 @@ function school_bulk_certificate_download_shortcode() {
 						$output .= '<p style="margin-top: 20px;"><a href="' . esc_url( remove_query_arg( array( 'school_name', 'place' ) ) ) . '" style="color: #0073aa;">← Back to search form</a></p>';
 						$output .= '</div>';
 
-						// Schedule cleanup of the ZIP file after 1 hour
+						// Schedule cleanup — handler registered in CG_Cron_Jobs::init().
 						wp_schedule_single_event( time() + 3600, 'cleanup_certificate_zip', array( $zip_result['zip_path'] ) );
-						if ( ! wp_next_scheduled( 'register_cleanup_certificate_hook' ) ) {
-							add_action(
-								'cleanup_certificate_zip',
-								function ( $file_path ) {
-									if ( file_exists( $file_path ) ) {
-										unlink( $file_path );
-										error_log( "Cleaned up temporary certificate ZIP: {$file_path}" );
-									}
-								}
-							);
-							do_action( 'register_cleanup_certificate_hook' );
-						}
 
 						return $output;
 					} else {

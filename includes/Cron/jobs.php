@@ -9,6 +9,7 @@ class CG_Cron_Jobs {
 		add_action( 'cg_check_expiring_certificates', array( __CLASS__, 'check_expiring_certificates' ) );
 		add_action( 'cg_cleanup_old_certificates', array( __CLASS__, 'cleanup_old_certificates' ) );
 		add_action( 'cg_publish_scheduled_templates', array( __CLASS__, 'publish_scheduled_templates' ) );
+		add_action( 'cleanup_certificate_zip', array( __CLASS__, 'cleanup_zip_file' ) );
 
 		if ( ! wp_next_scheduled( 'cg_cleanup_qr_codes' ) ) {
 			wp_schedule_event( time(), 'daily', 'cg_cleanup_qr_codes' );
@@ -24,6 +25,12 @@ class CG_Cron_Jobs {
 
 		if ( ! wp_next_scheduled( 'cg_publish_scheduled_templates' ) ) {
 			wp_schedule_event( time(), 'hourly', 'cg_publish_scheduled_templates' );
+		}
+	}
+
+	public static function cleanup_zip_file( string $file_path ): void {
+		if ( $file_path && file_exists( $file_path ) ) {
+			wp_delete_file( $file_path );
 		}
 	}
 

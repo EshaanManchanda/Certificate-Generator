@@ -714,20 +714,20 @@ function certificate_generator_send_email( $cg_id, $log_email = true ) {
 	// Get WP Mail SMTP configuration if available
 	$smtp_settings = array();
 	if ( $smtp_configured ) {
-		$options = get_option( 'wp_mail_smtp', array() );
-		if ( ! empty( $options['mail'] ) ) {
+		$smtp_options = get_option( 'wp_mail_smtp', array() );
+		if ( ! empty( $smtp_options['mail'] ) ) {
 			$smtp_settings = array(
-				'mailer'           => isset( $options['mail']['mailer'] ) ? $options['mail']['mailer'] : 'unknown',
-				'from_email'       => isset( $options['mail']['from_email'] ) ? $options['mail']['from_email'] : 'not set',
-				'from_email_force' => isset( $options['mail']['from_email_force'] ) ? $options['mail']['from_email_force'] : false,
-				'from_name_force'  => isset( $options['mail']['from_name_force'] ) ? $options['mail']['from_name_force'] : false,
+				'mailer'           => isset( $smtp_options['mail']['mailer'] ) ? $smtp_options['mail']['mailer'] : 'unknown',
+				'from_email'       => isset( $smtp_options['mail']['from_email'] ) ? $smtp_options['mail']['from_email'] : 'not set',
+				'from_email_force' => isset( $smtp_options['mail']['from_email_force'] ) ? $smtp_options['mail']['from_email_force'] : false,
+				'from_name_force'  => isset( $smtp_options['mail']['from_name_force'] ) ? $smtp_options['mail']['from_name_force'] : false,
 			);
 
 			// Add SMTP-specific settings if using SMTP/Other SMTP
-			if ( isset( $options['smtp'] ) ) {
-				$smtp_settings['smtp_host']       = isset( $options['smtp']['host'] ) ? $options['smtp']['host'] : 'not set';
-				$smtp_settings['smtp_port']       = isset( $options['smtp']['port'] ) ? $options['smtp']['port'] : 'not set';
-				$smtp_settings['smtp_encryption'] = isset( $options['smtp']['encryption'] ) ? $options['smtp']['encryption'] : 'none';
+			if ( isset( $smtp_options['smtp'] ) ) {
+				$smtp_settings['smtp_host']       = isset( $smtp_options['smtp']['host'] ) ? $smtp_options['smtp']['host'] : 'not set';
+				$smtp_settings['smtp_port']       = isset( $smtp_options['smtp']['port'] ) ? $smtp_options['smtp']['port'] : 'not set';
+				$smtp_settings['smtp_encryption'] = isset( $smtp_options['smtp']['encryption'] ) ? $smtp_options['smtp']['encryption'] : 'none';
 			}
 		}
 	}
@@ -849,7 +849,7 @@ function certificate_generator_send_email( $cg_id, $log_email = true ) {
 			if ( $email_sent ) {
 				certificate_generator_log_email( $logged_cg_id, $recipient_email, $cert_name, $cert_type, $log_subject, true );
 			} else {
-				$detailed_error = "wp_mail() failed after {$attempt} attempts" . ( $last_error ? ": {$last_error}" : '' );
+				$detailed_error = 'wp_mail() failed after ' . min( $attempt - 1, $max_retries ) . ' attempts' . ( $last_error ? ": {$last_error}" : '' );
 				certificate_generator_log_email( $logged_cg_id, $recipient_email, $cert_name, $cert_type, $log_subject, false, $detailed_error );
 			}
 		}

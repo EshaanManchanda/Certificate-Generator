@@ -26,6 +26,7 @@ define( 'CG_QUEUE_BATCH_SIZE', 50 );
 define( 'CG_QUEUE_STALE_MINUTES', 10 );
 define( 'CG_QUEUE_MAX_ATTEMPTS', 3 );
 define( 'CG_QUEUE_RUNTIME_BUDGET', 20 );
+define( 'CG_ADMIN_EXPORT_ZIP_PART_SIZE', 200 );
 
 // Plugins page action links: Settings | Docs | Get Pro
 add_filter(
@@ -149,6 +150,7 @@ $optional_files = array(
 	'includes/Services/bulk-email-sender.php'           => 'Bulk email sender',
 	'includes/legacy-shims.php'                         => 'v8 anti-corruption shims (frozen, @deprecated v8)',
 	'includes/Admin/bulk-email.php'                     => 'Bulk email admin page',
+	'includes/Admin/cert-download-admin.php'            => 'Admin certificate download page',
 	'includes/Admin/filters-api.php'                    => 'Admin filters API',
 	'includes/Admin/integration-dashboard.php'          => 'Integration health dashboard widget',
 	'includes/Public/student-template.php'              => 'Student public profile template',
@@ -330,6 +332,7 @@ if ( class_exists( '\CertificateGenerator\Database\CustomTables' ) ) {
 			// ── Bulk Operations ──
 			add_submenu_page( 'cg-dashboard', 'Bulk Import', 'Bulk Import', 'manage_options', 'cg-bulk-import', 'cg_render_bulk_import_page' );
 			add_submenu_page( 'cg-dashboard', 'Bulk Export', 'Bulk Export', 'manage_options', 'cg-bulk-export', 'cg_render_bulk_export_page' );
+			add_submenu_page( 'cg-dashboard', 'Download Certificates', 'Download Certs', 'manage_options', 'cg-cert-download', 'cg_render_admin_cert_download_page' );
 			// cg-bulk-serials registered by CG_Bulk_Serial_Generator::add_bulk_serial_menu() in bulk-serial.php — not duplicated here.
 
 			// ── Email ──

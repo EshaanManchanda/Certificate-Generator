@@ -4,9 +4,9 @@
  * Echoes HTML form fields only — caller wraps in <form>.
  */
 function cg_render_export_filter_fields() {
-	$years       = function_exists( 'certificate_generator_get_unique_years' ) ? certificate_generator_get_unique_years() : array();
-	$schools     = function_exists( 'certificate_generator_get_unique_schools' ) ? certificate_generator_get_unique_schools() : array();
-	$cert_types  = function_exists( 'certificate_generator_get_unique_certificate_types' ) ? certificate_generator_get_unique_certificate_types() : array();
+	$years      = function_exists( 'certificate_generator_get_unique_years' ) ? certificate_generator_get_unique_years() : array();
+	$schools    = function_exists( 'certificate_generator_get_unique_schools' ) ? certificate_generator_get_unique_schools() : array();
+	$cert_types = function_exists( 'certificate_generator_get_unique_certificate_types' ) ? certificate_generator_get_unique_certificate_types() : array();
 	?>
 	<table class="form-table" style="max-width:700px;">
 		<tr>
@@ -130,8 +130,8 @@ function bulk_export_students() {
 			if ( $table_exists ) {
 				// Export from SQL tables (with optional filters)
 				[ $where_sql, $where_params ] = cg_export_filter_where();
-				$sql  = "SELECT * FROM $student_table" . $where_sql . ' ORDER BY id ASC'; // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
-				$rows = empty( $where_params )
+				$sql                          = "SELECT * FROM $student_table" . $where_sql . ' ORDER BY id ASC'; // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+				$rows                         = empty( $where_params )
 					? $GLOBALS['wpdb']->get_results( $sql, ARRAY_A ) // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 					: $GLOBALS['wpdb']->get_results( $GLOBALS['wpdb']->prepare( $sql, ...$where_params ), ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 
@@ -304,8 +304,8 @@ function bulk_export_schools() {
 
 			if ( $table_exists ) {
 				[ $where_sql, $where_params ] = cg_export_filter_where();
-				$sql  = "SELECT * FROM $school_table" . $where_sql . ' ORDER BY id ASC'; // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
-				$rows = empty( $where_params )
+				$sql                          = "SELECT * FROM $school_table" . $where_sql . ' ORDER BY id ASC'; // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+				$rows                         = empty( $where_params )
 					? $GLOBALS['wpdb']->get_results( $sql, ARRAY_A ) // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 					: $GLOBALS['wpdb']->get_results( $GLOBALS['wpdb']->prepare( $sql, ...$where_params ), ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 
@@ -450,8 +450,8 @@ function bulk_export_teachers() {
 
 			if ( $table_exists ) {
 				[ $where_sql, $where_params ] = cg_export_filter_where();
-				$sql  = "SELECT * FROM $teacher_table" . $where_sql . ' ORDER BY id ASC'; // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
-				$rows = empty( $where_params )
+				$sql                          = "SELECT * FROM $teacher_table" . $where_sql . ' ORDER BY id ASC'; // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+				$rows                         = empty( $where_params )
 					? $GLOBALS['wpdb']->get_results( $sql, ARRAY_A ) // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 					: $GLOBALS['wpdb']->get_results( $GLOBALS['wpdb']->prepare( $sql, ...$where_params ), ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 

@@ -38,16 +38,26 @@ class CG_Backend_API {
 	}
 
 	public function verify_license( string $license_key ): array {
-		return $this->request( 'POST', '/api/payments/verify-license', array( 'license_key' => $license_key ) );
+		return $this->request(
+			'POST',
+			'/api/payments/verify-license',
+			array(
+				'license_key'     => $license_key,
+				'product'         => CG_License_Manager::PRODUCT_SLUG,
+				'installation_id' => CG_License_Manager::get_installation_id(),
+			)
+		);
 	}
 
-	public function deactivate_on_server( string $license_key, string $site_url ): array {
+	public function deactivate_on_server( string $license_key, string $site_url, string $installation_id = '' ): array {
 		return $this->request(
 			'POST',
 			'/api/payments/deactivate-remote',
 			array(
-				'license_key' => $license_key,
-				'site_url'    => $site_url,
+				'license_key'     => $license_key,
+				'site_url'        => $site_url,
+				'product'         => CG_License_Manager::PRODUCT_SLUG,
+				'installation_id' => $installation_id ?: CG_License_Manager::get_installation_id(),
 			)
 		);
 	}
@@ -57,9 +67,11 @@ class CG_Backend_API {
 			'POST',
 			'/api/payments/usage',
 			array(
-				'license_key' => $license_key,
-				'count'       => $count,
-				'site_url'    => home_url(),
+				'license_key'     => $license_key,
+				'count'           => $count,
+				'site_url'        => home_url(),
+				'product'         => CG_License_Manager::PRODUCT_SLUG,
+				'installation_id' => CG_License_Manager::get_installation_id(),
 			),
 			blocking: false
 		);

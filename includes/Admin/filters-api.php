@@ -367,8 +367,8 @@ function certificate_generator_get_filtered_recipients( $filters = array() ) {
 			$where = array( '1=1', 't.send_email = 1' );
 
 			[ $extra_where, $extra_params ] = cg_build_recipient_filter_sql( $filters, 't' );
-			$where  = array_merge( $where, $extra_where );
-			$params = array_merge( $params, $extra_params );
+			$where                          = array_merge( $where, $extra_where );
+			$params                         = array_merge( $params, $extra_params );
 
 			$where_sql = implode( ' AND ', $where );
 			$parts[]   = "SELECT t.wp_post_id AS post_id, '$type' AS post_type,
@@ -543,8 +543,8 @@ function certificate_generator_count_filtered_recipients( $filters = array() ) {
 			$where = array( '1=1', 't.send_email = 1' );
 
 			[ $extra_where, $extra_params ] = cg_build_recipient_filter_sql( $filters, 't' );
-			$where  = array_merge( $where, $extra_where );
-			$params = array_merge( $params, $extra_params );
+			$where                          = array_merge( $where, $extra_where );
+			$params                         = array_merge( $params, $extra_params );
 
 			$where_sql = implode( ' AND ', $where );
 			$parts[]   = "SELECT t.wp_post_id AS post_id, '$type' AS post_type,

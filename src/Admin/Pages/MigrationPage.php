@@ -88,9 +88,9 @@ class MigrationPage {
 		$cpts_cleaned        = get_option( 'cg_cpts_cleaned_up', false );
 
 		// Count remaining legacy CPT posts directly from DB (CPTs are no longer registered).
-		$legacy_cpt_types = array( 'students', 'teachers', 'schools', 'certificates' );
-		$placeholders     = implode( ',', array_fill( 0, count( $legacy_cpt_types ), '%s' ) );
-		$remaining_rows   = $wpdb->get_results(
+		$legacy_cpt_types     = array( 'students', 'teachers', 'schools', 'certificates' );
+		$placeholders         = implode( ',', array_fill( 0, count( $legacy_cpt_types ), '%s' ) );
+		$remaining_rows       = $wpdb->get_results(
 			$wpdb->prepare(
 				"SELECT post_type, COUNT(*) AS cnt FROM {$wpdb->posts} WHERE post_type IN ($placeholders) GROUP BY post_type",
 				...$legacy_cpt_types
@@ -414,17 +414,49 @@ class MigrationPage {
 		global $wpdb;
 
 		$results = array(
-			'students'  => array( 'cpt_only' => 0, 'sql_only' => 0 ),
-			'teachers'  => array( 'cpt_only' => 0, 'sql_only' => 0 ),
-			'schools'   => array( 'cpt_only' => 0, 'sql_only' => 0 ),
-			'templates' => array( 'cpt_only' => 0, 'sql_only' => 0 ),
+			'students'  => array(
+				'cpt_only' => 0,
+				'sql_only' => 0,
+			),
+			'teachers'  => array(
+				'cpt_only' => 0,
+				'sql_only' => 0,
+			),
+			'schools'   => array(
+				'cpt_only' => 0,
+				'sql_only' => 0,
+			),
+			'templates' => array(
+				'cpt_only' => 0,
+				'sql_only' => 0,
+			),
 		);
 
 		$checks = array(
-			'students'  => array( 'cpt' => 'students', 'sql' => 'students', 'meta_key' => 'email', 'sql_col' => 'email' ),
-			'teachers'  => array( 'cpt' => 'teachers', 'sql' => 'teachers', 'meta_key' => 'email', 'sql_col' => 'email' ),
-			'schools'   => array( 'cpt' => 'schools', 'sql' => 'schools', 'meta_key' => 'school_name', 'sql_col' => 'school_name' ),
-			'templates' => array( 'cpt' => 'certificates', 'sql' => 'certificate_templates', 'meta_key' => 'certificate_type', 'sql_col' => 'certificate_type' ),
+			'students'  => array(
+				'cpt'      => 'students',
+				'sql'      => 'students',
+				'meta_key' => 'email',
+				'sql_col'  => 'email',
+			),
+			'teachers'  => array(
+				'cpt'      => 'teachers',
+				'sql'      => 'teachers',
+				'meta_key' => 'email',
+				'sql_col'  => 'email',
+			),
+			'schools'   => array(
+				'cpt'      => 'schools',
+				'sql'      => 'schools',
+				'meta_key' => 'school_name',
+				'sql_col'  => 'school_name',
+			),
+			'templates' => array(
+				'cpt'      => 'certificates',
+				'sql'      => 'certificate_templates',
+				'meta_key' => 'certificate_type',
+				'sql_col'  => 'certificate_type',
+			),
 		);
 
 		foreach ( $checks as $entity => $cfg ) {
@@ -433,13 +465,15 @@ class MigrationPage {
 				continue;
 			}
 
-			$cpt_values = $wpdb->get_col( $wpdb->prepare(
-				"SELECT pm.meta_value FROM {$wpdb->postmeta} pm
+			$cpt_values = $wpdb->get_col(
+				$wpdb->prepare(
+					"SELECT pm.meta_value FROM {$wpdb->postmeta} pm
 				 INNER JOIN {$wpdb->posts} p ON p.ID = pm.post_id
 				 WHERE p.post_type = %s AND pm.meta_key = %s AND pm.meta_value != ''",
-				$cfg['cpt'],
-				$cfg['meta_key']
-			) );
+					$cfg['cpt'],
+					$cfg['meta_key']
+				)
+			);
 
 			$sql_values = $wpdb->get_col( "SELECT {$cfg['sql_col']} FROM $sql_table WHERE {$cfg['sql_col']} != ''" ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 

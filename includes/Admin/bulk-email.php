@@ -722,6 +722,11 @@ function certificate_generator_ajax_send_to_filtered() {
 	$result       = certificate_generator_bulk_queue_emails( '', $cg_ids, $filters['skip_already_sent'] );
 	$total_queued = $result['queued'];
 
+	// Kick off first batch immediately so users don't wait for cron.
+	if ( $total_queued > 0 && function_exists( 'certificate_generator_process_queue_batch' ) ) {
+		certificate_generator_process_queue_batch();
+	}
+
 	$response = array(
 		'queued'       => $total_queued,
 		'auto_created' => $inserted,

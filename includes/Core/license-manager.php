@@ -23,13 +23,20 @@ class CG_License_Manager {
 	// Constants
 	// -----------------------------------------------------------------------
 
-	const OPTION_PLAN        = 'cg_plan';
-	const OPTION_LICENSE_KEY = 'cg_license_key';
-	const OPTION_EXPIRY      = 'cg_license_expiry';
-	const OPTION_USAGE       = 'cg_monthly_usage';
-	const OPTION_USAGE_MONTH = 'cg_usage_month';
-	const CRON_HOOK          = 'cg_reset_monthly_usage';
-	const CRON_HEARTBEAT     = 'cg_license_heartbeat';
+	const OPTION_PLAN            = 'cg_plan';
+	const OPTION_LICENSE_KEY     = 'cg_license_key';
+	const OPTION_EXPIRY          = 'cg_license_expiry';
+	const OPTION_USAGE           = 'cg_monthly_usage';
+	const OPTION_USAGE_MONTH     = 'cg_usage_month';
+	const OPTION_INSTALLATION_ID = 'cg_installation_id'; // Stable UUID; survives key changes + domain migrations.
+	const CRON_HOOK              = 'cg_reset_monthly_usage';
+	const CRON_HEARTBEAT         = 'cg_license_heartbeat';
+
+	/**
+	 * Product slug sent to the license server on all API calls.
+	 * Change per-plugin when extracting this class into other plugins.
+	 */
+	const PRODUCT_SLUG = 'certificate-generator';
 
 	const PLAN_FREE     = 'free';
 	const PLAN_PRO      = 'pro';
@@ -111,6 +118,37 @@ class CG_License_Manager {
 	}
 
 	/**
+	 * Returns a stable UUID for this plugin installation.
+	 * Generated once on first call and persisted in wp_options.
+	 * Used for single-site binding; survives http→https / www / domain changes.
+	 */
+	public static function get_installation_id(): string {
+		$id = (string) get_option( self::OPTION_INSTALLATION_ID, '' );
+		if ( empty( $id ) ) {
+			$id = self::generate_uuid();
+			update_option( self::OPTION_INSTALLATION_ID, $id, false );
+		}
+		return $id;
+	}
+
+	/**
+	 * Generate a UUID v4.
+	 */
+	private static function generate_uuid(): string {
+		return sprintf(
+			'%04x%04x-%04x-%04x-%04x-%04x%04x%04x',
+			mt_rand( 0, 0xffff ),
+			mt_rand( 0, 0xffff ),
+			mt_rand( 0, 0xffff ),
+			mt_rand( 0, 0x0fff ) | 0x4000,
+			mt_rand( 0, 0x3fff ) | 0x8000,
+			mt_rand( 0, 0xffff ),
+			mt_rand( 0, 0xffff ),
+			mt_rand( 0, 0xffff )
+		);
+	}
+
+	/**
 	 * Activate a license key.
 	 *
 	 * Currently a local-only stub — stores the key and upgrades the plan.
@@ -155,8 +193,10 @@ class CG_License_Manager {
 				'headers' => array( 'Content-Type' => 'application/json' ),
 				'body'    => wp_json_encode(
 					array(
-						'license_key' => $key,
-						'site_url'    => home_url(),
+						'license_key'     => $key,
+						'site_url'        => home_url(),
+						'product'         => self::PRODUCT_SLUG,
+						'installation_id' => self::get_installation_id(),
 					)
 				),
 			)
@@ -267,7 +307,7 @@ class CG_License_Manager {
 		$key = self::get_license_key();
 		if ( $key && self::get_license_server() ) {
 			require_once CERTIFICATE_GENERATOR_PATH . 'includes/Payment/backend-api.php';
-			CG_Backend_API::instance()->deactivate_on_server( $key, home_url() );
+			CG_Backend_API::instance()->deactivate_on_server( $key, home_url(), self::get_installation_id() );
 		}
 		delete_option( self::OPTION_LICENSE_KEY );
 		delete_option( self::OPTION_EXPIRY );

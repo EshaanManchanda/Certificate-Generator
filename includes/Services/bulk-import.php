@@ -948,14 +948,14 @@ function bulk_import_certificates() {
 						$dup_args      = $event_date
 							? array( $certificate_type, $event_date )
 							: array( $certificate_type );
-						if ( $wpdb->get_var( $wpdb->prepare( $dup_check_sql, ...$dup_args ) ) ) {
-							continue; // Skip duplicate
-						}
+					if ( $wpdb->get_var( $wpdb->prepare( $dup_check_sql, ...$dup_args ) ) ) {
+						continue; // Skip duplicate
+					}
 
 						$orientation = sanitize_key( $certificate_data['template_orientation'] ?? $certificate_data['orientation'] ?? 'landscape' );
-						if ( ! in_array( $orientation, array( 'portrait', 'landscape' ), true ) ) {
-							$orientation = 'landscape';
-						}
+					if ( ! in_array( $orientation, array( 'portrait', 'landscape' ), true ) ) {
+						$orientation = 'landscape';
+					}
 
 						$page_size_raw = $certificate_data['page_size'] ?? 'A4';
 						$page_size     = in_array( $page_size_raw, array( 'A4', 'Letter', 'Legal', 'Custom' ), true ) ? $page_size_raw : 'A4';

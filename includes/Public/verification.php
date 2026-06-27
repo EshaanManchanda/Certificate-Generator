@@ -69,14 +69,14 @@ class CG_Public_Verification {
 		);
 
 		$s  = $this->get_style_options();
-		$br = $s['border_radius'];
+		$br = absint( $s['border_radius'] );
 
 		ob_start();
 		?>
 		<div id="cg-verify-container" style="max-width:600px;margin:40px auto;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Oxygen-Sans,Ubuntu,Cantarell,'Helvetica Neue',sans-serif;">
 
 			<!-- Search Form Card -->
-			<form id="cg-verify-form" style="padding:35px;background:#ffffff;border-radius:<?php echo $br; ?>px;box-shadow:0 10px 40px rgba(0,0,0,0.08);transition:all .3s ease;">
+			<form id="cg-verify-form" style="padding:35px;background:#ffffff;border-radius:<?php echo esc_attr( $br ); ?>px;box-shadow:0 10px 40px rgba(0,0,0,0.08);transition:all .3s ease;">
 
 				<div style="text-align:center;margin-bottom:30px;">
 					<!-- Shield-check icon -->
@@ -102,14 +102,14 @@ class CG_Public_Verification {
 					</label>
 					<input type="text" id="cg-serial-input" name="serial_number" required autocomplete="off"
 							placeholder=""
-							style="width:100%;padding:26px 16px 10px 16px;background:#f8f9fa;border:2px solid #eaeaea;border-radius:<?php echo $br; ?>px;font-size:16px;transition:all .3s ease;outline:none;box-sizing:border-box;"
+							style="width:100%;padding:26px 16px 10px 16px;background:#f8f9fa;border:2px solid #eaeaea;border-radius:<?php echo esc_attr( $br ); ?>px;font-size:16px;transition:all .3s ease;outline:none;box-sizing:border-box;"
 							onfocus="this.style.borderColor='<?php echo esc_attr( $s['btn_start'] ); ?>';this.previousElementSibling.style.top='8px';this.previousElementSibling.style.fontSize='12px';this.previousElementSibling.style.color='<?php echo esc_attr( $s['btn_start'] ); ?>'"
 							onblur="if(this.value===''){this.style.borderColor='#eaeaea';this.previousElementSibling.style.top='18px';this.previousElementSibling.style.fontSize='16px';this.previousElementSibling.style.color='<?php echo esc_attr( $s['text_color'] ); ?>'}else{this.style.borderColor='#eaeaea';this.previousElementSibling.style.color='<?php echo esc_attr( $s['text_color'] ); ?>';}">
 				</div>
 
 				<!-- Submit button -->
 				<button type="submit" id="cg-verify-btn"
-						style="display:flex;align-items:center;justify-content:center;width:100%;padding:16px;background:linear-gradient(135deg,<?php echo esc_attr( $s['btn_start'] ); ?>,<?php echo esc_attr( $s['btn_end'] ); ?>);color:#fff;border:none;border-radius:<?php echo $br; ?>px;font-size:16px;font-weight:600;cursor:pointer;transition:all .3s ease;box-shadow:0 4px 15px rgba(0,0,0,0.1);transform:translateY(0);"
+						style="display:flex;align-items:center;justify-content:center;width:100%;padding:16px;background:linear-gradient(135deg,<?php echo esc_attr( $s['btn_start'] ); ?>,<?php echo esc_attr( $s['btn_end'] ); ?>);color:#fff;border:none;border-radius:<?php echo esc_attr( $br ); ?>px;font-size:16px;font-weight:600;cursor:pointer;transition:all .3s ease;box-shadow:0 4px 15px rgba(0,0,0,0.1);transform:translateY(0);"
 						onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 8px 20px rgba(0,0,0,0.15)'"
 						onmouseout="this.style.transform='translateY(0)';this.style.boxShadow='0 4px 15px rgba(0,0,0,0.1)'">
 					<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
@@ -121,7 +121,7 @@ class CG_Public_Verification {
 			</form>
 
 			<!-- Loading spinner -->
-			<div id="cg-verify-loading" style="display:none;text-align:center;padding:40px 35px;background:#ffffff;border-radius:<?php echo $br; ?>px;box-shadow:0 10px 40px rgba(0,0,0,0.08);margin-top:25px;">
+			<div id="cg-verify-loading" style="display:none;text-align:center;padding:40px 35px;background:#ffffff;border-radius:<?php echo esc_attr( $br ); ?>px;box-shadow:0 10px 40px rgba(0,0,0,0.08);margin-top:25px;">
 				<div style="width:48px;height:48px;border:4px solid #f3f3f3;border-top:4px solid <?php echo esc_attr( $s['btn_start'] ); ?>;border-radius:50%;animation:cgSpin 1s linear infinite;margin:0 auto 15px;"></div>
 				<p style="color:<?php echo esc_attr( $s['text_color'] ); ?>;margin:0;font-size:16px;"><?php esc_html_e( 'Verifying certificate...', 'certificate-generator' ); ?></p>
 			</div>
@@ -151,7 +151,7 @@ class CG_Public_Verification {
 	public function ajax_public_verify() {
 		check_ajax_referer( 'cg_verify_nonce', 'nonce' );
 
-		$serial = sanitize_text_field( $_POST['serial_number'] ?? '' );
+		$serial = sanitize_text_field( wp_unslash( $_POST['serial_number'] ?? '' ) );
 		if ( empty( $serial ) ) {
 			wp_send_json_error( array( 'message' => 'Serial number is required' ) );
 		}
@@ -171,6 +171,7 @@ class CG_Public_Verification {
 
 		$cert = $wpdb->get_row(
 			$wpdb->prepare(
+				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 				"SELECT * FROM $table WHERE serial_number = %s",
 				$serial
 			)

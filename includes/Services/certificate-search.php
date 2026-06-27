@@ -1306,6 +1306,7 @@ function cg_insert_certificate_record( array $post_data, string $serial_number, 
 	// Avoid duplicate rows for the same serial
 	$exists = $wpdb->get_var(
 		$wpdb->prepare(
+			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 			"SELECT id FROM $table WHERE serial_number = %s LIMIT 1",
 			$serial_number
 		)
@@ -1350,6 +1351,7 @@ function cg_insert_certificate_record( array $post_data, string $serial_number, 
 				if ( ! array_key_exists( $cert_type, $template_id_cache ) ) {
 					$template_id_cache[ $cert_type ] = $wpdb->get_var(
 						$wpdb->prepare(
+							// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 							"SELECT id FROM $tpl_table WHERE certificate_type = %s AND status = 'published' LIMIT 1",
 							$cert_type
 						)
@@ -1422,6 +1424,7 @@ function cg_find_existing_serial( string $student_name, string $certificate_type
 	$table  = $wpdb->prefix . 'certificate_generator';
 	$serial = $wpdb->get_var(
 		$wpdb->prepare(
+			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 			"SELECT serial_number FROM $table WHERE student_name = %s AND certificate_type = %s AND serial_number IS NOT NULL AND serial_number != '' ORDER BY id DESC LIMIT 1",
 			$student_name,
 			$certificate_type
@@ -1453,7 +1456,8 @@ function cg_resolve_student_template( int $post_id ) {
 			if ( $_tbl && $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $_tbl ) ) === $_tbl ) {
 				$_row = $wpdb->get_row(
 					$wpdb->prepare(
-						"SELECT certificate_type, issue_date FROM $_tbl WHERE wp_post_id = %d LIMIT 1",
+						// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+					"SELECT certificate_type, issue_date FROM $_tbl WHERE wp_post_id = %d LIMIT 1",
 						$post_id
 					),
 					ARRAY_A
@@ -1555,6 +1559,7 @@ function _cg_generate_pdf_impl( $post_id, $fields, $student_data = null ) {
 		) {
 			$sql_row = $wpdb->get_row(
 				$wpdb->prepare(
+					// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 					"SELECT * FROM $entity_table WHERE wp_post_id = %d LIMIT 1",
 					$post_id
 				),
@@ -2036,6 +2041,7 @@ function _cg_generate_pdf_impl( $post_id, $fields, $student_data = null ) {
 				if ( $post_id > 0 ) {
 					$cert_row_id = $wpdb->get_var(
 						$wpdb->prepare(
+							// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 							"SELECT id FROM $cert_table WHERE wp_post_id = %d ORDER BY id DESC LIMIT 1",
 							$post_id
 						)
@@ -2044,6 +2050,7 @@ function _cg_generate_pdf_impl( $post_id, $fields, $student_data = null ) {
 				if ( ! $cert_row_id && ! empty( $serial_number ) ) {
 					$cert_row_id = $wpdb->get_var(
 						$wpdb->prepare(
+							// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 							"SELECT id FROM $cert_table WHERE serial_number = %s ORDER BY id DESC LIMIT 1",
 							$serial_number
 						)
@@ -2146,7 +2153,7 @@ function generate_certificate_pdf_email( $post_id, $fields, $email_options = nul
 add_shortcode( 'teacher_search', 'teacher_search_shortcode' );
 function teacher_search_shortcode() {
 	if ( isset( $_GET['teacher_email'] ) ) {
-		$email = sanitize_email( $_GET['teacher_email'] );
+		$email = sanitize_email( wp_unslash( $_GET['teacher_email'] ) );
 
 		// SQL-first: query wp_cg_teachers
 		$sql_teachers = array();
@@ -2565,8 +2572,8 @@ add_shortcode( 'school_search', 'school_search_shortcode' );
 function school_search_shortcode() {
 	// Check if input parameters are provided
 	if ( isset( $_GET['school_name'] ) && isset( $_GET['place'] ) ) {
-		$school_name_query = sanitize_text_field( $_GET['school_name'] );
-		$place_query       = sanitize_text_field( $_GET['place'] );
+		$school_name_query = sanitize_text_field( wp_unslash( $_GET['school_name'] ) );
+		$place_query       = sanitize_text_field( wp_unslash( $_GET['place'] ) );
 
 		// SQL-first: query wp_cg_schools
 		$sql_schools = array();
@@ -3026,7 +3033,7 @@ function school_search_shortcode() {
 add_shortcode( 'student_search', 'scs_student_search_shortcode' );
 function scs_student_search_shortcode() {
 	if ( isset( $_GET['student_email'] ) ) {
-		$email = sanitize_email( $_GET['student_email'] );
+		$email = sanitize_email( wp_unslash( $_GET['student_email'] ) );
 
 		cg_debug_log( 'Student search: looking for email = ' . $email );
 
@@ -3529,7 +3536,6 @@ function scs_student_search_shortcode() {
 
 		$output .= '</div>'; // End container
 	}
-
 
 	return $output;
 }

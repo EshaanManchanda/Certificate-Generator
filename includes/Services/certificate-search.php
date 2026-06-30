@@ -835,7 +835,92 @@ function cg_select_certificate_template( $certificate_type, $issue_date_iso = ''
 		}
 	}
 
-	return null;
+	// CPT fallback — for sites that haven't migrated templates to the SQL table yet.
+	$cpt_posts = get_posts(
+		array(
+			'post_type'      => 'certificates',
+			'post_status'    => 'publish',
+			'posts_per_page' => -1,
+			'meta_key'       => 'certificate_type',
+			'meta_value'     => $certificate_type,
+		)
+	);
+
+	if ( empty( $cpt_posts ) ) {
+		$all_cpt = get_posts(
+			array(
+				'post_type'      => 'certificates',
+				'post_status'    => 'publish',
+				'posts_per_page' => -1,
+			)
+		);
+		foreach ( $all_cpt as $post ) {
+			$type = get_post_meta( $post->ID, 'certificate_type', true );
+			if ( strtolower( trim( $type ) ) === strtolower( trim( $certificate_type ) ) ) {
+				$cpt_posts[] = $post;
+			}
+		}
+	}
+
+	if ( empty( $cpt_posts ) ) {
+		return null;
+	}
+
+	if ( count( $cpt_posts ) === 1 ) {
+		return $cpt_posts[0];
+	}
+
+	$cpt_with_date    = array();
+	$cpt_without_date = array();
+	foreach ( $cpt_posts as $post ) {
+		$ev = trim( (string) get_post_meta( $post->ID, 'event_date', true ) );
+		if ( $ev !== '' ) {
+			$cpt_with_date[] = array(
+				'post'       => $post,
+				'event_date' => $ev,
+			);
+		} else {
+			$cpt_without_date[] = $post;
+		}
+	}
+
+	if ( empty( $cpt_with_date ) ) {
+		return $cpt_posts[0];
+	}
+
+	$normalised_cpt_issue = '';
+	if ( ! empty( $issue_date_iso ) ) {
+		$dt = DateTime::createFromFormat( 'Y-m-d', $issue_date_iso );
+		if ( $dt ) {
+			$normalised_cpt_issue = $dt->format( 'Y-m-d' );
+		}
+	}
+
+	if ( $normalised_cpt_issue !== '' ) {
+		foreach ( $cpt_with_date as $item ) {
+			if ( $item['event_date'] === $normalised_cpt_issue ) {
+				return $item['post'];
+			}
+		}
+	}
+
+	if ( ! empty( $normalised_cpt_issue ) && ! $strict ) {
+		$closest      = null;
+		$closest_diff = PHP_INT_MAX;
+		$issue_ts     = strtotime( $normalised_cpt_issue );
+		foreach ( $cpt_with_date as $item ) {
+			$diff = abs( strtotime( $item['event_date'] ) - $issue_ts );
+			if ( $diff < $closest_diff ) {
+				$closest_diff = $diff;
+				$closest      = $item['post'];
+			}
+		}
+		if ( $closest ) {
+			return $closest;
+		}
+	}
+
+	return $cpt_with_date[0]['post'];
 }
 
 function _cg_generate_pdf_with_data_impl( $post_data ) {
@@ -845,7 +930,7 @@ function _cg_generate_pdf_with_data_impl( $post_data ) {
 	// Set $visual_debug = true to overlay field-boundary markers on the PDF.
 	// MUST be false in production — it draws red boxes / coloured dots on certs.
 	// Follows WP_DEBUG: set WP_DEBUG = true in wp-config.php to enable visual markers.
-	$visual_debug = true; // overlay markers only in debug mode
+	$visual_debug = defined( 'WP_DEBUG' ) && WP_DEBUG;
 
 	cg_debug_log( 'Post Data: ' . print_r( $post_data, true ) );
 

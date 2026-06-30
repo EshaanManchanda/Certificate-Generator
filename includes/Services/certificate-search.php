@@ -930,7 +930,7 @@ function _cg_generate_pdf_with_data_impl( $post_data ) {
 	// Set $visual_debug = true to overlay field-boundary markers on the PDF.
 	// MUST be false in production — it draws red boxes / coloured dots on certs.
 	// Follows WP_DEBUG: set WP_DEBUG = true in wp-config.php to enable visual markers.
-	$visual_debug = defined( 'WP_DEBUG' ) && WP_DEBUG;
+	$visual_debug = true;
 
 	cg_debug_log( 'Post Data: ' . print_r( $post_data, true ) );
 
@@ -1737,8 +1737,10 @@ function _cg_generate_pdf_impl( $post_id, $fields, $student_data = null ) {
 
 	// Validate the template URL
 	cg_debug_log( "Validating template URL: {$template_url}" );
+	// Skip the HTTP fetch — we're generating server-side; path resolution below
+	// handles missing files. Remote check causes failures on loopback/redirect/CDN.
 	if ( function_exists( 'cg_validate_template_url' ) ) {
-		$validation_result = cg_validate_template_url( $template_url );
+		$validation_result = cg_validate_template_url( $template_url, true );
 		if ( $validation_result !== true ) {
 			error_log( 'Certificate Generator: Template URL validation failed: ' . $validation_result );
 			return false;

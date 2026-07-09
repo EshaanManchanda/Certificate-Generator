@@ -9,6 +9,13 @@
     <testsuites>
         <testsuite name="Unit">
             <directory suffix="Test.php">tests/Unit</directory>
+            <exclude>tests/Unit/Smoke</exclude>
+        </testsuite>
+        <testsuite name="Smoke">
+            <directory suffix="Test.php">tests/Unit/Smoke</directory>
+        </testsuite>
+        <testsuite name="Integration">
+            <directory suffix="Test.php">tests/Integration</directory>
         </testsuite>
     </testsuites>
 

@@ -69,9 +69,8 @@ class CG_Serial_Number_Generator {
 			return;
 		}
 
-		// Identify student by email or name + certificate_type
-		$email = $student_data['email'] ?? '';
-		$name  = $student_data['student_name'] ?? $student_data['teacher_name'] ?? '';
+		$row_id     = (int) ( $student_data['id'] ?? 0 );
+		$wp_post_id = (int) ( $student_data['wp_post_id'] ?? 0 );
 
 		$update_data = array(
 			'serial_number'    => $serial,
@@ -79,28 +78,41 @@ class CG_Serial_Number_Generator {
 			'updated_at'       => current_time( 'mysql' ),
 		);
 
-		if ( ! empty( $email ) ) {
-			// Update by email
+		// Match on an exact row identity — never by email/name alone, which hits
+		// every sibling sharing that address or name and clobbers their serials.
+		if ( $row_id > 0 ) {
 			$wpdb->update(
 				$student_table,
 				$update_data,
-				array( 'email' => $email ),
+				array( 'id' => $row_id ),
 				array( '%s', '%s', '%s' ),
-				array( '%s' )
+				array( '%d' )
 			);
-		} elseif ( ! empty( $name ) && ! empty( $certificate_type ) ) {
-			// Update by name + certificate_type
-			$wpdb->update(
-				$student_table,
-				$update_data,
-				array(
-					'student_name'     => $name,
-					'certificate_type' => $certificate_type,
-				),
-				array( '%s', '%s', '%s' ),
-				array( '%s', '%s' )
-			);
+			return;
 		}
+
+		if ( $wp_post_id > 0 ) {
+			$wpdb->update(
+				$student_table,
+				$update_data,
+				array( 'wp_post_id' => $wp_post_id ),
+				array( '%s', '%s', '%s' ),
+				array( '%d' )
+			);
+			return;
+		}
+
+		// No reliable identity available. A name/email fuzzy match can hit multiple
+		// sibling rows at once, so this is logged only — never an automatic mutation.
+		error_log(
+			sprintf(
+				'[CG Serial] update_student_serial: no id/wp_post_id for serial %s (name=%s, type=%s, email=%s) — skipped to avoid clobbering siblings; needs manual confirmation',
+				$serial,
+				$student_data['student_name'] ?? $student_data['teacher_name'] ?? '',
+				$certificate_type,
+				$student_data['email'] ?? ''
+			)
+		);
 	}
 
 	private function get_next_sequence( $certificate_type, $reset_period ) {

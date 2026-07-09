@@ -3,7 +3,7 @@
  * Plugin Name:       Certificate Generator
  * Plugin URI:        https://github.com/eshaanmanchanda/certificate-generator
  * Description:       A comprehensive plugin for managing, generating, and bulk-sending certificates for students and teachers.
- * Version:           7.0.0
+ * Version:           7.0.1
  * Requires at least: 6.0
  * Requires PHP:      8.0
  * Tested up to:      6.7
@@ -166,6 +166,7 @@ $optional_files = array(
 	'includes/Public/verification.php'                  => 'Public verification page',
 	'includes/Cron/jobs.php'                            => 'Scheduled cron jobs',
 	'includes/Admin/documentation.php'                  => 'Documentation & getting started page',
+	'includes/Cli/repair-siblings.php'                  => 'WP-CLI sibling repair command',
 );
 
 $missing_critical_files = array();
@@ -333,7 +334,7 @@ if ( class_exists( '\CertificateGenerator\Database\CustomTables' ) ) {
 			add_submenu_page( 'cg-dashboard', 'Bulk Import', 'Bulk Import', 'manage_options', 'cg-bulk-import', 'cg_render_bulk_import_page' );
 			add_submenu_page( 'cg-dashboard', 'Bulk Export', 'Bulk Export', 'manage_options', 'cg-bulk-export', 'cg_render_bulk_export_page' );
 			add_submenu_page( 'cg-dashboard', 'Download Certificates', 'Download Certs', 'manage_options', 'cg-cert-download', 'cg_render_admin_cert_download_page' );
-			// cg-bulk-serials registered by CG_Bulk_Serial_Generator::add_bulk_serial_menu() in bulk-serial.php — not duplicated here.
+			add_submenu_page( 'cg-dashboard', 'Bulk Serial Numbers', 'Bulk Serials', 'manage_options', 'cg-bulk-serials', 'cg_render_bulk_serials_page' );
 
 			// ── Email ──
 			add_submenu_page( 'cg-dashboard', 'Bulk Send Certificates', 'Bulk Send', 'manage_options', 'certificate-bulk-send', 'cg_render_bulk_send_page' );

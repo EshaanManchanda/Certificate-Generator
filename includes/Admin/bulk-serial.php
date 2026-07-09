@@ -14,7 +14,6 @@ class CG_Bulk_Serial_Generator {
 	}
 
 	public function init() {
-		add_action( 'admin_menu', array( $this, 'add_bulk_serial_menu' ) );
 		add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_assets' ) );
 		add_action( 'wp_ajax_cg_bulk_generate_serials', array( $this, 'ajax_bulk_generate' ) );
 		add_action( 'wp_ajax_cg_bulk_generate_status', array( $this, 'ajax_get_status' ) );
@@ -286,6 +285,8 @@ class CG_Bulk_Serial_Generator {
 					if ( $serial_gen ) {
 						$student_data = array(
 							'email'        => $email,
+							'id'           => $entity_id,
+							'wp_post_id'   => $wp_post_id,
 							'student_name' => $name,
 						);
 						$serial       = $serial_gen->generate( $cert_type, $student_data );

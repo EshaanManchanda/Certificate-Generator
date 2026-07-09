@@ -391,9 +391,8 @@ endif;
 		$message = '';
 		$errors  = array();
 
-		$font_manager   = class_exists( 'CertificateGenerator_FontManager' ) ? \CertificateGenerator_FontManager::getInstance() : null;
-		$cg_is_business = class_exists( 'CG_License_Manager' ) && \CG_License_Manager::is_business();
-		$font_options   = $font_manager ? $font_manager->get_font_options( $cg_is_business ) : array( 'helvetica' => 'Helvetica' );
+		$font_manager = class_exists( 'CertificateGenerator_FontManager' ) ? \CertificateGenerator_FontManager::getInstance() : null;
+		$font_options = $font_manager ? $font_manager->get_font_options( true ) : array( 'helvetica' => 'Helvetica' );
 
 		if ( $_SERVER['REQUEST_METHOD'] === 'POST'
 			&& ! empty( $_POST['cg_template_nonce'] )

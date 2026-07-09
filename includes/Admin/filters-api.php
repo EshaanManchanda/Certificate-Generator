@@ -12,6 +12,27 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 /**
+ * Whether a table has a given column. Cached per-request — avoids re-running
+ * SHOW COLUMNS for every entity on every filter/preview/count call.
+ *
+ * Guards the send_email opt-out filter: if the migration that adds this
+ * column hasn't run (or failed) on a given install, referencing t.send_email
+ * in the WHERE clause throws a SQL error and every UNION branch silently
+ * returns zero rows — emptying the whole Bulk Send preview with no visible error.
+ */
+function cg_table_has_column( string $table, string $column ): bool {
+	static $cache = array();
+	$key = "$table.$column";
+	if ( isset( $cache[ $key ] ) ) {
+		return $cache[ $key ];
+	}
+	global $wpdb;
+	$col            = $wpdb->get_row( $wpdb->prepare( 'SHOW COLUMNS FROM `' . $table . '` LIKE %s', $column ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+	$cache[ $key ]  = (bool) $col;
+	return $cache[ $key ];
+}
+
+/**
  * Get unique school names for a post type
  *
  * @param string|array $post_types Post type(s) to query
@@ -364,7 +385,8 @@ function certificate_generator_get_filtered_recipients( $filters = array() ) {
 			}
 
 			// send_email = 1: included in bulk sends. send_email = 0: opt-out (admin individual send bypasses this).
-			$where = array( '1=1', 't.send_email = 1' );
+			// Column may be absent if the add-column migration hasn't run yet — don't let that zero out every result.
+			$where = cg_table_has_column( $tbl, 'send_email' ) ? array( '1=1', 't.send_email = 1' ) : array( '1=1' );
 
 			[ $extra_where, $extra_params ] = cg_build_recipient_filter_sql( $filters, 't' );
 			$where                          = array_merge( $where, $extra_where );
@@ -382,7 +404,7 @@ function certificate_generator_get_filtered_recipients( $filters = array() ) {
                                     MAX(sent_at) AS sent_at
                              FROM $email_logs -- phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
                              GROUP BY recipient_email
-                         ) el ON t.email = el.email
+                         ) el ON t.email COLLATE utf8mb4_unicode_ci = el.email COLLATE utf8mb4_unicode_ci
                          WHERE $where_sql"; // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 		}
 
@@ -540,7 +562,8 @@ function certificate_generator_count_filtered_recipients( $filters = array() ) {
 			}
 
 			// send_email = 1: included in bulk sends. send_email = 0: opt-out (admin individual send bypasses this).
-			$where = array( '1=1', 't.send_email = 1' );
+			// Column may be absent if the add-column migration hasn't run yet — don't let that zero out every result.
+			$where = cg_table_has_column( $tbl, 'send_email' ) ? array( '1=1', 't.send_email = 1' ) : array( '1=1' );
 
 			[ $extra_where, $extra_params ] = cg_build_recipient_filter_sql( $filters, 't' );
 			$where                          = array_merge( $where, $extra_where );
@@ -556,7 +579,7 @@ function certificate_generator_count_filtered_recipients( $filters = array() ) {
                                     MAX(CASE WHEN status = 'sent' THEN 'sent' ELSE NULL END) AS status
                              FROM $email_logs -- phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
                              GROUP BY recipient_email
-                         ) el ON t.email = el.email
+                         ) el ON t.email COLLATE utf8mb4_unicode_ci = el.email COLLATE utf8mb4_unicode_ci
                          WHERE $where_sql"; // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 		}
 

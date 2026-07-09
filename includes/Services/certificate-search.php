@@ -410,7 +410,7 @@ function cg_certificates_url(): string {
 /**
  * Canonical PDF download filename: {StudentName}_{CertType}_{UniqueId}_certificate.pdf
  * Use this everywhere a certificate file needs a human-readable name (ZIP entries, downloads).
- * Do NOT use for the stored/canonical pdf_path on disk — that uses certificate_{post_id}.pdf.
+ * Do NOT use for the stored/canonical pdf_path on disk — see cg_canonical_pdf_basename().
  */
 function cg_certificate_pdf_filename( string $student_name, string $cert_type, string $unique_id = '' ): string {
 	$parts = array_filter(
@@ -421,6 +421,41 @@ function cg_certificate_pdf_filename( string $student_name, string $cert_type, s
 		)
 	);
 	return implode( '_', $parts ) . '_certificate.pdf';
+}
+
+/**
+ * Canonical on-disk PDF basename.
+ *
+ * post_id > 0 keeps the legacy certificate_{post_id}.pdf scheme unchanged so
+ * every existing postmeta-based reader keeps working. post_id === 0 (bulk-imported
+ * rows with no CPT) keys on the entity table's own primary key instead, so siblings
+ * sharing one email + certificate_type never collide/overwrite each other's file
+ * (see the CERT-00000080/IPMC-2026-06-INDIA-0094 sibling-overwrite bug).
+ */
+function cg_canonical_pdf_basename( int $post_id, array $student_data ): string {
+	if ( $post_id > 0 ) {
+		return "certificate_{$post_id}.pdf";
+	}
+
+	$entity_type = ! empty( $student_data['entity_type'] )
+		? substr( sanitize_key( $student_data['entity_type'] ), 0, 40 )
+		: '';
+	$row_id      = (int) ( $student_data['id'] ?? 0 );
+
+	if ( $entity_type && $row_id > 0 ) {
+		return "certificate_{$entity_type}_{$row_id}.pdf";
+	}
+
+	$hash_source = implode(
+		'|',
+		array(
+			$student_data['serial_number'] ?? '',
+			$student_data['student_name'] ?? $student_data['teacher_name'] ?? $student_data['school_name'] ?? '',
+			$student_data['email'] ?? '',
+			$student_data['certificate_type'] ?? '',
+		)
+	);
+	return 'certificate_' . substr( md5( $hash_source ), 0, 16 ) . '.pdf';
 }
 
 /**
@@ -930,7 +965,7 @@ function _cg_generate_pdf_with_data_impl( $post_data ) {
 	// Set $visual_debug = true to overlay field-boundary markers on the PDF.
 	// MUST be false in production — it draws red boxes / coloured dots on certs.
 	// Follows WP_DEBUG: set WP_DEBUG = true in wp-config.php to enable visual markers.
-	$visual_debug = true;
+	$visual_debug = defined( 'WP_DEBUG' ) && WP_DEBUG;
 
 	cg_debug_log( 'Post Data: ' . print_r( $post_data, true ) );
 
@@ -1501,11 +1536,31 @@ function cg_insert_certificate_record( array $post_data, string $serial_number, 
  * Look up an existing serial number for a student + certificate type combo.
  * Returns the serial string if found, empty string otherwise.
  */
-function cg_find_existing_serial( string $student_name, string $certificate_type ): string {
+function cg_find_existing_serial( string $student_name, string $certificate_type, int $entity_id = 0, string $entity_type = '' ): string {
+	global $wpdb;
+
+	// Prefer the entity row's own imported serial (e.g. IPMC-2026-06-INDIA-0094) — exact
+	// identity, so it can never be confused with a same-name/same-type sibling's serial.
+	if ( $entity_id > 0 && $entity_type && class_exists( '\CertificateGenerator\Database\CustomTables' ) ) {
+		$tables = \CertificateGenerator\Database\CustomTables::instance();
+		$tbl    = $tables->get_table( $entity_type );
+		if ( $tbl && $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $tbl ) ) === $tbl ) {
+			$own_serial = $wpdb->get_var(
+				$wpdb->prepare(
+					// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+					"SELECT serial_number FROM $tbl WHERE id = %d AND serial_number IS NOT NULL AND serial_number != '' LIMIT 1",
+					$entity_id
+				)
+			);
+			if ( $own_serial ) {
+				return $own_serial;
+			}
+		}
+	}
+
 	if ( empty( $student_name ) || empty( $certificate_type ) ) {
 		return '';
 	}
-	global $wpdb;
 	$table  = $wpdb->prefix . 'certificate_generator';
 	$serial = $wpdb->get_var(
 		$wpdb->prepare(
@@ -1651,8 +1706,9 @@ function _cg_generate_pdf_impl( $post_id, $fields, $student_data = null ) {
 				ARRAY_A
 			);
 			if ( ! empty( $sql_row ) ) {
-				$student_data   = $sql_row;
-				$use_table_data = true;
+				$sql_row['entity_type'] = $entity_type;
+				$student_data           = $sql_row;
+				$use_table_data         = true;
 			}
 		}
 	}
@@ -1979,9 +2035,15 @@ function _cg_generate_pdf_impl( $post_id, $fields, $student_data = null ) {
 							?? get_post_meta( $post_id, 'student_name', true );
 		$email_for_lookup = $post_data['email'] ?? '';
 
-		// Reuse existing serial for the same student + certificate type
+		// Reuse existing serial for the same student + certificate type — prefer the
+		// entity row's own imported serial (exact id match) over name+type fuzzy match.
 		if ( $name_for_lookup && $certificate_type ) {
-			$serial_number = cg_find_existing_serial( $name_for_lookup, $certificate_type );
+			$serial_number = cg_find_existing_serial(
+				$name_for_lookup,
+				$certificate_type,
+				$use_table_data ? (int) ( $student_data['id'] ?? 0 ) : 0,
+				$use_table_data ? (string) ( $student_data['entity_type'] ?? '' ) : ''
+			);
 		}
 		if ( empty( $serial_number ) && class_exists( 'CG_Serial_Number_Generator' ) ) {
 			$serial_gen = CG_Serial_Number_Generator::get_instance();
@@ -1989,6 +2051,8 @@ function _cg_generate_pdf_impl( $post_id, $fields, $student_data = null ) {
 			$student_data_for_serial = array(
 				'email'        => $email_for_lookup,
 				'student_name' => $name_for_lookup,
+				'wp_post_id'   => (int) $post_id,
+				'id'           => $use_table_data ? (int) ( $student_data['id'] ?? 0 ) : 0,
 			);
 			$serial_number           = $serial_gen->generate( $certificate_type, $student_data_for_serial );
 		}
@@ -2076,8 +2140,8 @@ function _cg_generate_pdf_impl( $post_id, $fields, $student_data = null ) {
 		$upload_dir  = wp_upload_dir();
 		$upload_path = cg_certificates_dir();
 
-		$pdf_path = $upload_path . DIRECTORY_SEPARATOR . "certificate_$post_id.pdf";
-		$pdf_path = wp_normalize_path( $pdf_path );
+		$pdf_basename = cg_canonical_pdf_basename( (int) $post_id, is_array( $student_data ) ? $student_data : array() );
+		$pdf_path     = wp_normalize_path( $upload_path . DIRECTORY_SEPARATOR . $pdf_basename );
 
 		cg_debug_log( "PDF file path: $pdf_path" );
 
@@ -2109,7 +2173,7 @@ function _cg_generate_pdf_impl( $post_id, $fields, $student_data = null ) {
 			return false;
 		}
 
-		$file_url = cg_certificates_url() . "/certificate_$post_id.pdf";
+		$file_url = cg_certificates_url() . '/' . $pdf_basename;
 		cg_debug_log( "PDF generated successfully. URL: $file_url" );
 
 		// Store the actual file path in a post meta for easier retrieval

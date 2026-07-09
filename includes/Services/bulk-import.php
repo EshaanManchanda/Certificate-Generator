@@ -73,14 +73,14 @@ function bulk_import_students() {
 				);
 				$header_keys = array_map(
 					function ( $key ) {
-						return strtolower( preg_replace( '/[^a-z0-9_\-]/', '', $key ) );
+						return preg_replace( '/[^a-z0-9_\-]/', '', strtolower( $key ) );
 					},
 					$header
 				);
 
 				// Check only for missing required fields — never reject extra columns
 				$required_fields = array( 'student_name', 'email', 'school_name', 'issue_date', 'certificate_type' );
-				$known_optional  = array( 'status', 'send_email', 'phone', 'year' ); // system columns not registered as PDF field slots
+				$known_optional  = array( 'status', 'send_email', 'phone', 'year', 'serial_number', 'student_id', 'event_id' ); // system columns not registered as PDF field slots
 				$missing_fields  = array_diff( $required_fields, $header_keys );
 				$extra_columns   = array_values( array_filter( array_diff( $header_keys, array_merge( $required_fields, $known_optional ) ) ) );
 
@@ -206,6 +206,7 @@ function bulk_import_students() {
 							'school_id'        => $school_id,
 							'school_name'      => $school_name,
 							'certificate_type' => $cert_type,
+							'serial_number'    => sanitize_text_field( $student_data['serial_number'] ?? '' ) ?: null,
 							'issue_date'       => $_issue_stored ?: null,
 							'year'             => function_exists( 'cg_year_from_issue_date' ) ? cg_year_from_issue_date( $_issue_stored ) : null,
 							'status'           => 'active',
@@ -231,7 +232,11 @@ function bulk_import_students() {
 							);
 						}
 						if ( $existing ) {
-							$GLOBALS['wpdb']->update( $student_table, $insert_data, array( 'id' => $existing ) );
+							$update_data = $insert_data;
+							if ( $update_data['serial_number'] === null ) {
+								unset( $update_data['serial_number'] );
+							}
+							$GLOBALS['wpdb']->update( $student_table, $update_data, array( 'id' => $existing ) );
 						} else {
 							$GLOBALS['wpdb']->insert( $student_table, $insert_data );
 						}
@@ -267,7 +272,6 @@ function bulk_import_students() {
 					cg_flush_filter_caches();
 				}
 				echo '<div class="notice notice-success"><p>Successfully imported ' . $imported_count . ' students!' . esc_html( $extra_note ) . '</p></div>';
-				return; // Stop here — don't re-render the form after a successful import.
 			} else {
 				echo '<div class="notice notice-error"><p>Unable to open the file. Please check the file and try again.</p></div>';
 			}
@@ -275,8 +279,6 @@ function bulk_import_students() {
 	}
 
 	// Display the import form
-	echo '<div class="wrap">';
-	echo '<h1>Bulk Import Students</h1>';
 	echo '<form method="post" enctype="multipart/form-data">';
 	wp_nonce_field( 'bulk_import_students_nonce', '_wpnonce_bulk_import' );
 	echo '<table class="form-table">';
@@ -285,7 +287,6 @@ function bulk_import_students() {
 	echo '</table>';
 	echo '<input type="submit" name="submit_students" value="Import Students" class="button button-primary" />';
 	echo '</form>';
-	echo '</div>';
 }
 
 
@@ -347,7 +348,7 @@ function bulk_import_teachers() {
 				);
 				$header_keys = array_map(
 					function ( $key ) {
-						return strtolower( preg_replace( '/[^a-z0-9_\-]/', '', $key ) );
+						return preg_replace( '/[^a-z0-9_\-]/', '', strtolower( $key ) );
 					},
 					$header
 				);
@@ -362,7 +363,7 @@ function bulk_import_teachers() {
 				);
 
 				// Check only for missing required fields — never reject extra columns
-				$known_optional = array( 'status', 'send_email', 'phone', 'phone_number', 'year' ); // system columns not registered as PDF field slots
+				$known_optional = array( 'status', 'send_email', 'phone', 'phone_number', 'year', 'serial_number', 'student_id', 'event_id' ); // system columns not registered as PDF field slots
 				$missing_fields = array_diff( $required_fields, $header_keys );
 				$extra_columns  = array_values( array_filter( array_diff( $header_keys, array_merge( $required_fields, $known_optional ) ) ) );
 
@@ -463,6 +464,7 @@ function bulk_import_teachers() {
 						'school_id'        => $school_id,
 						'school_name'      => $school_name,
 						'certificate_type' => $cert_type,
+						'serial_number'    => sanitize_text_field( $teacher_data['serial_number'] ?? '' ) ?: null,
 						'issue_date'       => $_t_issue_stored ?: null,
 						'year'             => function_exists( 'cg_year_from_issue_date' ) ? cg_year_from_issue_date( $_t_issue_stored ) : null,
 						'status'           => 'active',
@@ -482,7 +484,11 @@ function bulk_import_teachers() {
 						)
 					);
 					if ( $existing ) {
-						$GLOBALS['wpdb']->update( $teacher_table, $insert_data, array( 'id' => $existing ) );
+						$update_data = $insert_data;
+						if ( $update_data['serial_number'] === null ) {
+							unset( $update_data['serial_number'] );
+						}
+						$GLOBALS['wpdb']->update( $teacher_table, $update_data, array( 'id' => $existing ) );
 					} else {
 						$GLOBALS['wpdb']->insert( $teacher_table, $insert_data );
 					}
@@ -500,13 +506,10 @@ function bulk_import_teachers() {
 			}
 		}
 
-		// Prevent duplicate processing of the request
-		exit;
+		return;
 	}
 
 	// Display the import form
-	echo '<div class="wrap">';
-	echo '<h1>Bulk Import Teachers</h1>';
 	echo '<form method="post" enctype="multipart/form-data">';
 	wp_nonce_field( 'bulk_import_teachers_nonce', '_wpnonce_bulk_import' );
 	echo '<table class="form-table">';
@@ -515,7 +518,6 @@ function bulk_import_teachers() {
 	echo '</table>';
 	echo '<input type="submit" name="submit_teachers" value="Import Teachers" class="button button-primary" />';
 	echo '</form>';
-	echo '</div>';
 }
 
 
@@ -578,7 +580,7 @@ function bulk_import_schools() {
 				);
 				$header_keys = array_map(
 					function ( $key ) {
-						return strtolower( preg_replace( '/[^a-z0-9_\-]/', '', $key ) );
+						return preg_replace( '/[^a-z0-9_\-]/', '', strtolower( $key ) );
 					},
 					$header
 				);
@@ -595,7 +597,7 @@ function bulk_import_schools() {
 
 				// Check only for missing required fields — never reject extra columns
 				// Also treat the unused city/place alias as an allowed extra.
-				$known_optional = array( 'status', 'send_email', 'year', $has_place ? 'city' : 'place' );
+				$known_optional = array( 'status', 'send_email', 'year', 'serial_number', 'student_id', 'event_id', $has_place ? 'city' : 'place' );
 				$missing_fields = array_diff( $required_fields, $header_keys );
 				$extra_columns  = array_values( array_filter( array_diff( $header_keys, array_merge( $required_fields, $known_optional ) ) ) );
 
@@ -670,6 +672,7 @@ function bulk_import_schools() {
 						'school_name'      => $school_name,
 						'city'             => sanitize_text_field( $school_data['place'] ?? $school_data['city'] ?? '' ),
 						'certificate_type' => $cert_type,
+						'serial_number'    => sanitize_text_field( $school_data['serial_number'] ?? '' ) ?: null,
 						'issue_date'       => $_s_issue_stored ?: null,
 						'year'             => function_exists( 'cg_year_from_issue_date' ) ? cg_year_from_issue_date( $_s_issue_stored ) : null,
 						'status'           => 'active',
@@ -689,7 +692,11 @@ function bulk_import_schools() {
 						)
 					);
 					if ( $existing ) {
-						$GLOBALS['wpdb']->update( $school_table, $insert_data, array( 'id' => $existing ) );
+						$update_data = $insert_data;
+						if ( $update_data['serial_number'] === null ) {
+							unset( $update_data['serial_number'] );
+						}
+						$GLOBALS['wpdb']->update( $school_table, $update_data, array( 'id' => $existing ) );
 					} else {
 						$GLOBALS['wpdb']->insert( $school_table, $insert_data );
 					}
@@ -707,13 +714,10 @@ function bulk_import_schools() {
 			}
 		}
 
-		// Prevent duplicate processing of the request
-		exit;
+		return;
 	}
 
 	// Display the import form
-	echo '<div class="wrap">';
-	echo '<h1>Bulk Import Schools</h1>';
 	echo '<form method="post" enctype="multipart/form-data">';
 	wp_nonce_field( 'bulk_import_schools_nonce', '_wpnonce_bulk_import' );
 	echo '<table class="form-table">';
@@ -722,7 +726,6 @@ function bulk_import_schools() {
 	echo '</table>';
 	echo '<input type="submit" name="submit_schools" value="Import Schools" class="button button-primary" />';
 	echo '</form>';
-	echo '</div>';
 }
 
 
@@ -1001,13 +1004,10 @@ function bulk_import_certificates() {
 			}
 		}
 
-		// Prevent duplicate processing of the request
-		exit;
+		return;
 	}
 
 	// Display the import form
-	echo '<div class="wrap">';
-	echo '<h1>Bulk Import Certificates</h1>';
 	echo '<form method="post" enctype="multipart/form-data">';
 	wp_nonce_field( 'bulk_import_certificates_nonce', '_wpnonce_bulk_import' );
 	echo '<table class="form-table">';
@@ -1016,5 +1016,4 @@ function bulk_import_certificates() {
 	echo '</table>';
 	echo '<input type="submit" name="submit_certificates" value="Import Certificates" class="button button-primary" />';
 	echo '</form>';
-	echo '</div>';
 }

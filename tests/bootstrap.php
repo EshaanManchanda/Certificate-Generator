@@ -36,6 +36,9 @@ if (!function_exists('wp_next_scheduled')) {
 if (!function_exists('wp_schedule_event')) {
     function wp_schedule_event(): void {}
 }
+if (!function_exists('add_shortcode')) {
+    function add_shortcode(): void {}
+}
 
 // WP output constants used by wpdb methods.
 if (!defined('ARRAY_A')) {

@@ -53,82 +53,82 @@ function cg_get_certs_by_email( string $email ): array {
 }
 
 /**
- * Generate (or retrieve) a PDF for a wp_certificate_generator row.
+ * Generate (or retrieve) a PDF for a certificate row.
+ *
+ * $row must be used AS PASSED — never re-queried by email+certificate_type,
+ * which collapses same-email siblings onto one row (the cause of siblings
+ * receiving each other's names on their certificates).
+ *
  * Returns the filesystem path on success, null on failure.
  */
 function cg_generate_pdf_from_row( array $row ): ?string {
-	// Use stored path when still valid.
-	if ( ! empty( $row['pdf_path'] ) && file_exists( $row['pdf_path'] ) ) {
-		return $row['pdf_path'];
-	}
-
 	global $wpdb;
 
-	// ── SQL-first path: look up live entity row, call generate_certificate_pdf ──
-	// Uses fresh data from wp_cg_* tables and avoids visual_debug markers.
-	if ( function_exists( 'generate_certificate_pdf' )
-		&& ! empty( $row['email'] )
-		&& ! empty( $row['certificate_type'] )
-		&& class_exists( '\CertificateGenerator\Database\CustomTables' )
-	) {
-		$tables = \CertificateGenerator\Database\CustomTables::instance();
-		foreach ( array( 'students', 'teachers', 'schools' ) as $entity ) {
-			$tbl = $tables->get_table( $entity );
-			if ( empty( $tbl ) || $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $tbl ) ) !== $tbl ) {
-				continue;
-			}
-			$sql_row = $wpdb->get_row(
-				$wpdb->prepare(
-					"SELECT * FROM $tbl WHERE email = %s AND certificate_type = %s LIMIT 1",
-					$row['email'],
-					$row['certificate_type']
-				),
-				ARRAY_A
-			);
-			if ( empty( $sql_row ) ) {
-				continue;
-			}
-			// wp_post_id may be 0 for bulk-imported rows with no CPT post.
-			// generate_certificate_pdf() works with post_id=0 when $student_data is supplied.
-			$post_id   = (int) ( $sql_row['wp_post_id'] ?? 0 );
-			$cert_type = $sql_row['certificate_type'] ?? '';
-			$fields    = class_exists( 'CG_Field_Schema' )
-				? CG_Field_Schema::get_all_renderable_fields( $cert_type )
-				: array( 'student_name', 'school_name', 'issue_date' );
-			$file_url  = generate_certificate_pdf( $post_id, $fields, $sql_row );
-			if ( $file_url ) {
-				// Derive filesystem path from URL — don't rely on postmeta which
-				// may not be saved when wp_post_id = 0.
-				$path = wp_normalize_path(
-					str_replace(
-						cg_certificates_url(),
-						cg_certificates_dir(),
-						$file_url
-					)
-				);
-				if ( ! file_exists( $path ) && $post_id > 0 ) {
-					// Fallback: try postmeta in case file landed elsewhere.
-					$path = wp_normalize_path( (string) get_post_meta( $post_id, 'certificate_file_path', true ) );
-				}
-				if ( $path && file_exists( $path ) ) {
-					if ( ! empty( $row['id'] ) ) {
-						$wpdb->update(
-							$wpdb->prefix . 'certificate_generator',
-							array( 'pdf_path' => $path ),
-							array( 'id' => $row['id'] ),
-							array( '%s' ),
-							array( '%d' )
-						);
-					}
-					return $path;
-				}
-			}
-			break; // found entity table; don't check others
+	// SQL-first rows (built in certificate_generator_send_email() from wp_cg_*) carry
+	// 'entity_type'. Legacy rows (from cg_get_certs_by_email()) predate that linkage —
+	// their 'id' maps to wp_certificate_generator, not an entity table.
+	$is_legacy_row = ! isset( $row['entity_type'] );
+
+	// Trust a cached path only when it still matches this row's canonical filename —
+	// a stale/collided path (e.g. a shared certificate_0.pdf) must be regenerated.
+	if ( $is_legacy_row && ! empty( $row['pdf_path'] ) && file_exists( $row['pdf_path'] ) ) {
+		$canonical = function_exists( 'cg_canonical_pdf_basename' )
+			? cg_canonical_pdf_basename( (int) ( $row['wp_post_id'] ?? 0 ), $row )
+			: basename( $row['pdf_path'] );
+		if ( basename( $row['pdf_path'] ) === $canonical ) {
+			return $row['pdf_path'];
 		}
 	}
 
-	// ── Fallback: generate from stored JSON blob ──────────────────────────────
-	if ( ! function_exists( 'generate_certificate_pdf_with_data' ) ) {
+	// Bulk SQL rows MUST carry their own id — without it we cannot key a unique
+	// filename and would risk overwriting a sibling's PDF. Fail loudly instead.
+	if ( ! $is_legacy_row && empty( $row['id'] ) ) {
+		error_log( '[CG Email] cg_generate_pdf_from_row: SQL row missing id (email=' . ( $row['email'] ?? '?' ) . ') — refusing to generate to avoid sibling collision' );
+		return null;
+	}
+
+	if ( function_exists( 'generate_certificate_pdf' ) && ! empty( $row['certificate_type'] ) ) {
+		$post_id   = (int) ( $row['wp_post_id'] ?? 0 );
+		$cert_type = $row['certificate_type'];
+		$fields    = class_exists( 'CG_Field_Schema' )
+			? CG_Field_Schema::get_all_renderable_fields( $cert_type )
+			: array( 'student_name', 'school_name', 'issue_date' );
+		// Pass $row directly — it already IS this record's own entity data.
+		$file_url = generate_certificate_pdf( $post_id, $fields, $row );
+
+		if ( $file_url ) {
+			// Derive filesystem path from URL — don't rely on postmeta which
+			// may not be saved when wp_post_id = 0.
+			$path = wp_normalize_path(
+				str_replace(
+					cg_certificates_url(),
+					cg_certificates_dir(),
+					$file_url
+				)
+			);
+			if ( ! file_exists( $path ) && $post_id > 0 ) {
+				// Fallback: try postmeta in case file landed elsewhere.
+				$path = wp_normalize_path( (string) get_post_meta( $post_id, 'certificate_file_path', true ) );
+			}
+			if ( $path && file_exists( $path ) ) {
+				// wp_certificate_generator only has a matching PK for legacy rows —
+				// an SQL-first row's 'id' belongs to an entity table, not this one.
+				if ( $is_legacy_row && ! empty( $row['id'] ) ) {
+					$wpdb->update(
+						$wpdb->prefix . 'certificate_generator',
+						array( 'pdf_path' => $path ),
+						array( 'id' => $row['id'] ),
+						array( '%s' ),
+						array( '%d' )
+					);
+				}
+				return $path;
+			}
+		}
+	}
+
+	// ── Fallback: generate from stored JSON blob (legacy rows only) ──────────
+	if ( ! $is_legacy_row || ! function_exists( 'generate_certificate_pdf_with_data' ) ) {
 		return null;
 	}
 
@@ -153,7 +153,7 @@ function cg_generate_pdf_from_row( array $row ): ?string {
 		}
 	}
 
-	if ( $path ) {
+	if ( $path && ! empty( $row['id'] ) ) {
 		$wpdb->update(
 			$wpdb->prefix . 'certificate_generator',
 			array( 'pdf_path' => $path ),
@@ -362,6 +362,7 @@ function certificate_generator_send_email( $cg_id, $log_email = true ) {
 					if ( ! isset( $_r['student_name'] ) ) {
 						$_r['student_name'] = $_r['teacher_name'] ?? $_r['school_name'] ?? '';
 					}
+					$_r['entity_type'] = $_ent;
 				}
 				unset( $_r );
 				$all_rows    = $_rows;
@@ -435,6 +436,7 @@ function certificate_generator_send_email( $cg_id, $log_email = true ) {
 	$certificates_data         = array();
 	$certificate_path          = null;
 	$generated_certificate_ids = array();
+	$failed_certificate_ids    = array();
 
 	$total_certs = count( $all_rows );
 	cg_email_debug_log( "Generating {$total_certs} PDFs for {$recipient_email}" );
@@ -448,7 +450,18 @@ function certificate_generator_send_email( $cg_id, $log_email = true ) {
 			$cert_path = cg_generate_pdf_from_row( $cert_row );
 
 			if ( empty( $cert_path ) || ! file_exists( $cert_path ) ) {
-				cg_email_debug_log( "PDF not found for cg_id {$cert_row['id']} — skipping" );
+				$failed_certificate_ids[] = (int) ( $cert_row['id'] ?? 0 );
+				// Genuine failure — a sibling's certificate silently dropping is the exact
+				// bug this fixes, so this must not be gated behind WP_DEBUG.
+				error_log(
+					sprintf(
+						'[CG Email] PDF generation FAILED — cg_id=%d name=%s email=%s type=%s (sibling will NOT be delivered)',
+						(int) ( $cert_row['id'] ?? 0 ),
+						$cert_row['student_name'] ?? '',
+						$recipient_email,
+						$cert_row['certificate_type'] ?? ''
+					)
+				);
 				continue;
 			}
 
@@ -489,6 +502,18 @@ function certificate_generator_send_email( $cg_id, $log_email = true ) {
 	}
 
 	cg_email_debug_log( 'Generated ' . count( $certificates_data ) . " certs for {$recipient_email}" );
+
+	if ( ! empty( $failed_certificate_ids ) ) {
+		error_log(
+			sprintf(
+				'[CG Email] %d of %d certificates FAILED to generate for %s (cg_ids: %s) — partial delivery',
+				count( $failed_certificate_ids ),
+				$total_certs,
+				$recipient_email,
+				implode( ',', $failed_certificate_ids )
+			)
+		);
+	}
 
 	if ( $use_zip ) {
 		cg_email_debug_log( 'Creating ZIP for ' . count( $certificates_data ) . " certs → {$recipient_email}" );

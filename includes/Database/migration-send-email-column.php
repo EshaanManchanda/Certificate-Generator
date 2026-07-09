@@ -23,13 +23,13 @@ function cg_migrate_send_email_column() {
 	global $wpdb;
 	$tables  = \CertificateGenerator\Database\CustomTables::instance();
 	$targets = array( 'students', 'teachers', 'schools' );
+	$all_ok  = true;
 
 	foreach ( $targets as $entity ) {
 		$tbl = $tables->get_table( $entity );
-		if ( ! $tbl ) {
-			continue;
-		}
-		if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $tbl ) ) !== $tbl ) {
+		if ( ! $tbl || $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $tbl ) ) !== $tbl ) {
+			// Table doesn't exist yet — don't mark the migration done, retry on next load.
+			$all_ok = false;
 			continue;
 		}
 
@@ -41,5 +41,9 @@ function cg_migrate_send_email_column() {
 		$wpdb->query( "ALTER TABLE `$tbl` ADD COLUMN send_email TINYINT(1) NOT NULL DEFAULT 1" ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
 	}
 
-	update_option( 'cg_migration_send_email_column_done', true );
+	// Only mark done once every target table was actually checked/altered —
+	// otherwise a run that hit missing tables would permanently skip itself.
+	if ( $all_ok ) {
+		update_option( 'cg_migration_send_email_column_done', true );
+	}
 }

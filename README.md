@@ -2,7 +2,7 @@
 
 > A production-ready WordPress plugin for managing, generating, and bulk-sending PDF certificates for students, teachers, and schools — with QR codes, serial numbers, expiration tracking, analytics, and custom SQL tables.
 
-**Version:** 7.0.0 &nbsp;|&nbsp; **Author:** [Eshaan Manchanda](https://www.linkedin.com/in/eshaan-manchanda/) &nbsp;|&nbsp; **License:** GPL-2.0+ &nbsp;|&nbsp; **Requires:** WordPress 6.0+, PHP 8.0+
+**Version:** 7.0.1 &nbsp;|&nbsp; **Author:** [Eshaan Manchanda](https://www.linkedin.com/in/eshaan-manchanda/) &nbsp;|&nbsp; **License:** GPL-2.0+ &nbsp;|&nbsp; **Requires:** WordPress 6.0+, PHP 8.0+
 
 ---
 
@@ -556,7 +556,14 @@ Phases -1 through 4 are complete. Remaining work:
 
 ## Changelog
 
-### 7.0.0 (Current)
+### 7.0.1 (Current)
+- PDF template lookup: CPT fallback restored, HTTP validation skipped during server-side generation
+- Sibling-record collision guard in serial assignment and PDF row generation (refuses to clobber rows with no id/wp_post_id match)
+- CLI repair tool for resending failed sibling emails (`includes/Cli/repair-siblings.php`)
+- Filters API and bulk-import/export edge-case fixes
+- Smoke + integration test coverage added (plugin activation, file manifest, core symbols, CLI commands)
+
+### 7.0.0
 
 **Core Features:**
 - QR code generation with configurable size, position, error correction

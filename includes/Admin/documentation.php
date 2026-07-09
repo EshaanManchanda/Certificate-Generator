@@ -233,6 +233,7 @@ function cg_render_documentation_page() {
 				array( 'Bulk Send', admin_url( 'admin.php?page=certificate-bulk-send' ), 'dashicons-email-alt' ),
 				array( 'Email Logs', admin_url( 'admin.php?page=certificate-email-logs' ), 'dashicons-list-view' ),
 				array( 'Bulk Import', admin_url( 'admin.php?page=cg-bulk-import' ), 'dashicons-upload' ),
+				array( 'Bulk Serials', admin_url( 'admin.php?page=cg-bulk-serials' ), 'dashicons-tag' ),
 				array( 'Analytics', admin_url( 'admin.php?page=cg-analytics' ), 'dashicons-chart-bar' ),
 			);
 			foreach ( $links as [$label, $url, $icon] ) :
